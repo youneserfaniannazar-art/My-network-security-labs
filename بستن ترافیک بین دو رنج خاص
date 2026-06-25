@@ -1,0 +1,30 @@
+روش اول (سریع و ساده)
+در WinBox برو به مسیر IP > Firewall.
+در تب Filter Rules روی + کلیک کن.
+در تب General:
+Chain: forward (چون ترافیک از روتر عبور می‌کند).
+Src. Address: 192.168.10.0/24 (رنج فروش).
+Dst. Address: 192.168.20.0/24 (رنج فنی).
+در تب Action:
+Action: drop.
+OK کن.
+نکته: برای اینکه برعکسش هم اتفاق بیفتد (یعنی فنی هم نتواند به فروش وصل شود)، باید یک Rule دیگر دقیقاً برعکس این بنویسی.
+#######################################################################################################
+روش دوم: استفاده از Interface List
+به جای اینکه مدام IP بنویسی، یک لیست از اینترفیس‌های LAN می‌سازیم و قانون کلی می‌گذاریم که هیچ‌کدام از این لیست حق ندارند به هم وصل شوند.
+
+الف) ساخت لیست:
+
+برو به Interfaces > Interface List.
+روی Lists کلیک کن و یک لیست جدید بساز به اسم Internal-VLANs.
+حالا در تب Interface (همان‌جا)، vlan10-interface و vlan20-interface را عضو این لیست کن.
+ب) نوشتن قانون در فایروال:
+
+برو به IP > Firewall > Filter Rules و + بزن.
+در تب General:
+Chain: forward.
+In. Interface List: Internal-VLANs.
+Out. Interface List: Internal-VLANs.
+در تب Action:
+Action: drop.
+OK کن.
