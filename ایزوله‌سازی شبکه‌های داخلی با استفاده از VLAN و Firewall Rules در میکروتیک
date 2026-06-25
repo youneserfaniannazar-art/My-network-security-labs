@@ -1,0 +1,54 @@
+مرحله ۱: ساخت Bridge اصلی
+اول یک Bridge می‌سازیم که نقش سوییچ اصلی ما را بازی کند.
+
+برو به منوی Bridge و روی + کلیک کن.
+Name: bridge-trunk
+مهم: فعلاً تیک VLAN Filtering را نزن (آخرین مرحله این کار را می‌کنیم تا دسترسی خودت قطع نشود).
+OK کن.
+مرحله ۲: اضافه کردن پورت‌ها به Bridge
+فرض کن:
+
+پورت ether2 قرار است Trunk باشد (متصل به یک سوییچ دیگر یا اکسس‌پوینت).
+پورت ether3 قرار است Access برای VLAN 10 باشد.
+پورت ether4 قرار است Access برای VLAN 20 باشد.
+در همان پنجره Bridge برو به تب Ports.
+روی + کلیک کن: Interface=ether2 ، Bridge=bridge-trunk. (این پورت ترانک ماست).
+روی + کلیک کن: Interface=ether3 ، Bridge=bridge-trunk و در تب VLAN، عدد PVID را بذار 10.
+روی + کلیک کن: Interface=ether4 ، Bridge=bridge-trunk و در تب VLAN، عدد PVID را بذار 20.
+مرحله ۳: تعریف VLANها در Bridge
+حالا باید به Bridge بفهمانیم کدام تگی روی کدام پورت مجاز است.
+
+در پنجره Bridge برو به تب VLANs.
+روی + کلیک کن:
+Bridge: bridge-trunk
+VLAN IDs: 10
+Tagged: ether2 (چون ترانک است و تگ می‌خواد). همچنین خودِ bridge-trunk را هم اینجا اضافه کن (برای اینکه روتر بتواند به این VLAN آی‌پی بدهد).
+Untagged: ether3 (چون اکسس است).
+روی + کلیک کن:
+Bridge: bridge-trunk
+VLAN IDs: 20
+Tagged: ether2 و bridge-trunk.
+Untagged: ether4.
+مرحله ۴: ساخت اینترفیس مجازی برای مسیریابی (Routing)
+تا اینجا لایه ۲ تمام شد. برای اینکه روتر بتواند به این VLANها اینترنت بدهد یا بینشان روتینگ انجام دهد (Inter-VLAN Routing)، نیاز به اینترفیس لایه ۳ داریم.
+
+برو به مسیر Interfaces > VLAN.
+روی + کلیک کن:
+Name: vlan10-interface
+VLAN ID: 10
+Interface: bridge-trunk (دقت کن: اینترفیس را حتماً روی بریج بذار).
+دوباره روی + کلیک کن:
+Name: vlan20-interface
+VLAN ID: 20
+Interface: bridge-trunk.
+مرحله ۵: اختصاص IP به هر VLAN
+برو به IP > Addresses.
+برای VLAN 10: آی‌پی 192.168.10.1/24 را روی اینترفیس vlan10-interface تنظیم کن.
+برای VLAN 20: آی‌پی 192.168.20.1/24 را روی اینترفیس vlan20-interface تنظیم کن.
+مرحله ۶: فعال‌سازی نهایی (VLAN Filtering)
+این مرحله مثل روشن کردن دکمه نهایی است. هشدار: اگر از طریق یکی از این پورت‌ها وصل هستی، ممکن است دسترسی‌ات قطع شود؛ پس از طریق MAC به روتر وصل باش.
+
+برو به منوی Bridge و تب Bridge.
+روی bridge-trunk دوبار کلیک کن.
+تیک گزینه VLAN Filtering را بزن.
+Apply و OK.
