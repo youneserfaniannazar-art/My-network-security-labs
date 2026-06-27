@@ -1,0 +1,147 @@
+فرض می‌کنیم:
+
+روتر MikroTik
+WAN Interface: ether1
+IP Public یا NAT شده
+LAN Management: 192.168.10.0/24
+Users: 192.168.20.0/24
+WireGuard Tunnel Network
+10.10.10.0/24
+آدرس‌ها
+MikroTik WireGuard IP: 10.10.10.1/24
+Client IP: 10.10.10.2/32
+Port
+UDP 13231
+6) چیزی که در پایان می‌خواهیم
+کلاینت از بیرون اینترنت:
+
+به WireGuard وصل شود
+IP بگیرد: 10.10.10.2
+بتواند:
+192.168.10.0/24 را ببیند
+در صورت مجاز بودن، روتر را مدیریت کند
+و اگر خواستیم:
+به 192.168.20.0/24 هم دسترسی داشته باشد
+7) پیش‌نیازها
+قبل از شروع:
+
+RouterOS نسخه‌ای داشته باشی که WireGuard را پشتیبانی کند
+ساعت و تاریخ روتر درست باشد
+WAN کار کند
+فایروال پایه داشته باشی
+اگر روتر پشت NAT است، Port Forward انجام شده باشد
+8) مرحله اول — ساخت Interface WireGuard
+در WinBox:
+text
+Interfaces > WireGuard
+روی + بزن
+فیلدها:
+
+Name: wg0
+Listen Port: 13231
+بعد Apply / OK
+
+میکروتیک خودش:
+
+Private Key
+Public Key
+را می‌سازد.
+
+9) مرحله دوم — دادن IP به Interface
+مسیر:
+text
+IP > Addresses
++
+Address: 10.10.10.1/24
+Interface: wg0
+Apply / OK
+
+10) مرحله سوم — ساخت Peer برای کلاینت
+برای این مرحله باید Public Key کلاینت را داشته باشی.
+
+یعنی اول روی موبایل یا لپ‌تاپ WireGuard نصب می‌کنی و کلیدش را می‌سازی.
+
+در MikroTik:
+text
+Interfaces > WireGuard > Peers
++
+فیلدها:
+
+Interface: wg0
+Public Key: public key کلاینت
+Allowed Address: 10.10.10.2/32
+اگر فقط یک کلاینت داری، همین خوبه.
+
+11) مرحله چهارم — باز کردن پورت WireGuard در فایروال
+چون WireGuard روی UDP کار می‌کند، باید در input اجازه بدهی.
+
+Rule:
+General
+Chain: input
+Protocol: udp
+Dst. Port: 13231
+In. Interface List: WAN
+Action
+accept
+Comment
+text
+Allow WireGuard
+خیلی مهم
+این Rule باید قبل از Rule drop WAN to router باشد.
+
+چون ترافیک WireGuard مقصدش خود روتر است، در input بررسی می‌شود.
+
+12) مرحله پنجم — اجازه عبور ترافیک از تونل
+اگر کلاینت بعد از اتصال باید به LAN برسد، باید در forward هم Rule داشته باشی.
+
+مثلاً اگر می‌خواهی کلاینت به VLAN10 برسد:
+
+General
+Chain: forward
+Src. Address: 10.10.10.2
+Dst. Address: 192.168.10.0/24
+Action
+accept
+اگر می‌خواهی به VLAN20 هم برسد:
+
+Rule مشابه برای 192.168.20.0/24
+13) مرحله ششم — اگر روتر باید از داخل تونل قابل مدیریت باشد
+اگر می‌خواهی کلاینت از طریق WireGuard:
+
+WinBox
+SSH
+Ping
+به خود روتر بزند، باید در input اجازه بدهی.
+
+مثال:
+WinBox
+Chain: input
+Protocol: tcp
+Dst. Port: 8291
+Src. Address: 10.10.10.2
+Action: accept
+SSH
+Chain: input
+Protocol: tcp
+Dst. Port: 22
+Src. Address: 10.10.10.2
+Action: accept
+ICMP
+Chain: input
+Protocol: icmp
+Src. Address: 10.10.10.2
+Action: accept
+14) مرحله هفتم — ساخت کانفیگ کلاینت
+مثلاً روی موبایل یا لپ‌تاپ این کانفیگ را می‌سازی:
+
+ini
+[Interface]
+PrivateKey = CLIENT_PRIVATE_KEY
+Address = 10.10.10.2/24
+DNS = 192.168.10.1
+
+[Peer]
+PublicKey = ROUTER_PUBLIC_KEY
+Endpoint = YOUR_PUBLIC_IP:13231
+AllowedIPs = 192.168.10.0/24, 10.10.10.1/32
+PersistentKeepalive = 25
