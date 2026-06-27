@@ -1,0 +1,16 @@
+مفهوم AllowedIPs خیلی مهمه
+حالت 1 — فقط تونل
+AllowedIPs =
+
+text
+10.99.99.0/24
+حالت 2 — تونل + LAN
+AllowedIPs =
+
+text
+10.99.99.0/24, 192.168.10.0/24
+حالت 3 — Full Tunnel (تمام اینترنت از VPN)
+AllowedIPs =
+
+text
+0.0.0.0/0
