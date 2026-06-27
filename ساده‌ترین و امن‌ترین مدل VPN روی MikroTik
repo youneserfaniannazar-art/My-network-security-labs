@@ -1,0 +1,133 @@
+1) ساخت WireGuard روی MikroTik
+مسیر:
+Interfaces > WireGuard > +
+
+فیلدها:
+
+Name: wg0
+Listen Port: 51820
+Private Key: میکروتیک خودش می‌سازه
+Public Key: بعد از Apply ساخته می‌شود
+Apply / OK
+
+2) دادن IP به Interface WireGuard
+مسیر:
+
+IP > Addresses > +
+
+Address: 10.99.99.1/24
+Interface: wg0
+Apply / OK
+
+این IP می‌شود Gateway سمت MikroTik روی تونل.
+
+3) ساخت Peer برای کلاینت
+قبلش باید روی کلاینت (ویندوز/لینوکس) WireGuard را نصب و Key تولید کنی.
+
+بعدا کانفیگ کلاینت رو می‌سازیم، ولی فعلاً Public Key کلاینت لازم هست.
+
+مسیر:
+
+Interfaces > WireGuard > Peers > +
+
+Interface: wg0
+Public Key: Public Key سمت کلاینت
+Allowed Address: 10.99.99.2/32
+Apply / OK
+
+این یعنی:
+
+کلاینت فقط IP تونلی 10.99.99.2 خواهد داشت.
+
+4) فایروال – اجازه دادن پورت WireGuard
+چون WireGuard یک کانکشن UDP ـه، باید در chain=input اجازه بدی.
+
+مسیر:
+
+IP > Firewall > Filter Rules > +
+
+General:
+
+Chain: input
+Protocol: udp
+Dst Port: 51820
+In Interface List: WAN (یا ether1)
+Action:
+
+accept
+این Rule باید قبل از Drop WAN→Router باشد.
+
+5) NAT برای اینترنت (اختیاری)
+اگر می‌خواهی کلاینت VPN اینترنت را نیز از روترت دریافت کند، NAT لازم است.
+
+مسیر:
+
+IP > Firewall > NAT > +
+
+General:
+
+Chain: srcnat
+Src Address: 10.99.99.0/24
+Action:
+
+masquerade
+اگر اینترنت نمی‌خواهی → این بخش را نگذار.
+
+6) اجازه دسترسی کلاینت VPN به LAN (اختیاری اما رایج)
+اگر کلاینت باید به LAN برسد:
+
+مثال LAN:
+
+192.168.10.0/24
+
+مسیر:
+
+IP > Firewall > Filter > +
+
+General:
+
+Chain: forward
+Src Address: 10.99.99.2
+Dst Address: 192.168.10.0/24
+Action:
+
+accept
+این تنها Rule لازم است تا VPN → LAN فعال شود.
+
+7) ساخت کانفیگ کلاینت (ویندوز/لینوکس)
+در ویندوز WireGuard را نصب کن → Add Tunnel → Add Empty Tunnel.
+
+یک Private/Public Key برای کلاینت تولید می‌شود.
+
+حالا کانفیگ به این شکل:
+
+text
+[Interface]
+PrivateKey = CLIENT_PRIVATE_KEY
+Address = 10.99.99.2/24
+DNS = 10.99.99.1
+
+[Peer]
+PublicKey = ROUTER_PUBLIC_KEY
+Endpoint = YOUR_PUBLIC_IP:51820
+AllowedIPs = 10.99.99.0/24, 192.168.10.0/24
+PersistentKeepalive = 25
+
+8) تست اتصال
+کانفیگ WireGuard ویندوز/لینوکس را فعال کن
+در MikroTik:
+Interfaces > WireGuard > Peers
+
+باید مقدار Last Handshake ثبت شود.
+
+از کلاینت:
+text
+ping 10.99.99.1
+اگر جواب داد یعنی تونل OK است.
+
+اگر Rule اجازه داده:
+text
+ping 192.168.10.1
+اگر NAT داری:
+text
+ping 8.8.8.8
