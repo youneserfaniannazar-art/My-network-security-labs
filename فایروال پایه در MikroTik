@@ -1,0 +1,237 @@
+فرض می‌کنیم:
+
+VLAN10 = Management
+VLAN20 = Users
+و هدف اینه که:
+
+فقط VLAN10 بتواند روتر را مدیریت کند
+VLAN20 نتواند به خود روتر دسترسی داشته باشد
+VLAN20 نتواند به VLAN10 دسترسی داشته باشد
+VLAN20 همچنان اینترنت داشته باشد
+
+طراحی منطقی فایروال در این سناریو
+ما فایروال را به دو بخش تقسیم می‌کنیم:
+
+بخش اول: محافظت از خود روتر
+در input
+
+منطق:
+
+ارتباط‌های معتبر قبلی مجاز
+پکت invalid حذف
+فقط VLAN10 حق دسترسی مدیریتی به روتر داشته باشد
+VLAN20 به روتر نرسد
+اینترنت و عبور بین شبکه‌ها ربطی به input ندارد
+بخش دوم: کنترل عبور ترافیک
+در forward
+
+منطق:
+
+ارتباط‌های established/related مجاز
+invalid حذف
+VLAN20 به VLAN10 نرسد
+VLAN20 به WAN برسد
+از WAN ارتباط جدید ناخواسته وارد نشود
+
+پیش‌نیازهای درست قبل از فایروال
+قبل از نوشتن Ruleها باید این‌ها درست باشند:
+
+VLAN10 interface ساخته شده باشد
+VLAN20 interface ساخته شده باشد
+روی هر VLAN، IP ست شده باشد
+DHCP یا PPPoE یا هر سرویس لازم فعال باشد
+WAN مشخص باشد
+NAT فعال باشد
+
+به‌جای اینکه Ruleها را با Interface خام و پراکنده بنویسی، بهتره از Interface List استفاده کنی.
+
+مسیر:
+text
+Interfaces > Interface List
+لیست‌ها را بساز
+در تب Lists
+WAN
+LAN
+MGMT
+در تب Interface این‌ها را اضافه کن
+برای WAN:
+Interface: ether1
+List: WAN
+برای VLAN10:
+Interface: vlan10
+List: LAN
+Interface: vlan10
+List: MGMT
+برای VLAN20:
+Interface: vlan20
+List: LAN
+نتیجه
+WAN = اینترنت
+LAN = همه شبکه‌های داخلی
+MGMT = فقط شبکه مدیریتی
+
+فایروال پایه برای input — دسترسی به خود روتر
+حالا می‌رسیم به بخش مهم سناریو.
+
+Rule 1 — اجازه به established,related
+General
+Chain: input
+Connection State: established,related
+Action
+accept
+دلیل
+اگر ارتباطی قبلاً مجاز بوده، ادامه‌اش را بلاک نکن.
+
+Rule 2 — Drop invalid
+General
+Chain: input
+Connection State: invalid
+Action
+drop
+دلیل
+پکت خراب یا غیرعادی باید حذف شود.
+
+Rule 3 — اجازه مدیریت فقط از VLAN10
+General
+Chain: input
+In. Interface List: MGMT
+Action
+accept
+معنی
+فقط چیزی که از VLAN10 می‌آید، حق دسترسی به خود روتر را دارد.
+
+Rule 4 — اجازه ICMP از VLAN10 در صورت نیاز
+اگر خواستی Ping به روتر فقط از Management باز باشد، Rule بهتر اینه:
+
+General
+Chain: input
+Protocol: icmp
+In. Interface List: MGMT
+Action
+accept
+اگر Rule شماره 3 را کامل گذاشته‌ای، این Rule عملاً اختیاری است چون VLAN10 به‌هرحال اجازه دارد.
+
+Rule 5 — Drop دسترسی از VLAN20 به خود روتر
+General
+Chain: input
+In. Interface: vlan20
+Action
+drop
+معنی
+هر ترافیکی از Users که مقصدش خود روتر است، حذف شود.
+
+Rule 6 — Drop از WAN به خود روتر
+General
+Chain: input
+In. Interface List: WAN
+Action
+drop
+معنی
+دسترسی مستقیم از اینترنت به خود روتر بسته شود.
+
+فایروال forward — کنترل بین VLANها و اینترنت
+این بخش مربوط به عبور ترافیک است.
+
+Rule 1 — established,related
+General
+Chain: forward
+Connection State: established,related
+Action
+accept
+Rule 2 — invalid
+General
+Chain: forward
+Connection State: invalid
+Action
+drop
+Rule 3 — جلوگیری از ورود ارتباط جدید ناخواسته از WAN
+General
+Chain: forward
+In. Interface List: WAN
+Connection State: new
+Connection NAT State: !dstnat
+Action
+drop
+معنی
+اگر از اینترنت اتصال جدیدی آمد که Port Forward نشده، عبور نده.
+
+Rule 4 — جلوگیری از دسترسی VLAN20 به VLAN10
+General
+Chain: forward
+Src. Address: 192.168.20.0/24
+Dst. Address: 192.168.10.0/24
+Action
+drop
+معنی
+Users نباید به Management برسند.
+
+Rule 5 — اجازه VLAN20 به اینترنت
+General
+Chain: forward
+In. Interface: vlan20
+Out. Interface List: WAN
+Action
+accept
+معنی
+کاربران VLAN20 بتوانند به اینترنت بروند.
+
+NAT برای اینترنت VLAN20
+اگر NAT نداشته باشی، VLAN20 به اینترنت نمی‌رسد حتی اگر Rule forward درست باشد.
+
+مسیر:
+text
+IP > Firewall > NAT
+Rule:
+General
+Chain: srcnat
+Out. Interface List: WAN
+Action
+masquerade
+
+
+
+
+
+ساختار نهایی Rules
+Filter Rules — Input Chain
+ترتیب:
+
+accept established,related
+drop invalid
+accept from MGMT
+drop from vlan20
+drop from WAN
+Filter Rules — Forward Chain
+ترتیب:
+
+accept established,related
+drop invalid
+drop new from WAN not dstnat
+drop vlan20 -> vlan10
+accept vlan20 -> WAN
+accept vlan10 -> WAN ← در صورت نیاز
+
+
+
+نکته خیلی مهم درباره Rule شماره 3 در input
+وقتی این Rule را می‌گذاری:
+
+text
+accept input from MGMT
+یعنی VLAN10 به روتر دسترسی دارد.
+
+این شامل:
+
+WinBox
+SSH
+Ping
+DNS به خود روتر
+هر سرویس فعال دیگر
+پس اگر بخواهی امنیت را حرفه‌ای‌تر کنی، بهتر است به‌جای accept all from MGMT فقط سرویس‌های لازم را باز بگذاری.
+
+مثلاً:
+
+WinBox فقط از VLAN10
+SSH فقط از VLAN10
+ICMP فقط از VLAN10
+این نسخه امن‌تر است.
