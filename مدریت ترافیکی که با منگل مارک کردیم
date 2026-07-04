@@ -1,0 +1,20 @@
+گام 1: ایجاد Parent Queue (بدنه اصلی)
+باید مشخص کنی این صف روی کدوم اینترفیس اجرا میشه (مثلاً WAN).
+
+/queue tree add name=Global-Download parent=WAN-Interface queue=default
+
+گام 2: ساخت Child Queue (برای مارک خاص)
+حالا اون مارکی که تو Mangle ساختی رو اینجا فراخوانی می‌کنی تا محدود یا اولویت‌بندی بشه.
+
+/queue tree add name=LAN-Traffic-Control \
+parent=Global-Download \
+packet-mark=LAN_PACKET \
+max-limit=10M \
+priority=8
+
+تست
+
+ایجاد کردن ترافیک سنگین (مثلاً یک فایل دانلود کن)
+در منوی Queues تب Queue Tree رو باز کن.
+ببین چطور ترافیک با packet-mark خاص، زیر اون Queue قرار می‌گیره.
+تست کن اگر max-limit رو تغییر بدی، سرعت دانلود چقدر دقیق تغییر می‌کنه.
