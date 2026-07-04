@@ -1,0 +1,15 @@
+فرض:
+
+LAN = 192.168.1.0/24
+Rule:
+
+/ip firewall mangle
+add chain=prerouting src-address=192.168.1.0/24 action=mark-connection new-connection-mark=LAN_CONN
+بعد:
+
+add chain=prerouting connection-mark=LAN_CONN action=mark-packet new-packet-mark=LAN_PACKET
+
+تست
+/ip firewall mangle print stats
+
+باید counter بالا برود.
