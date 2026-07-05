@@ -1,0 +1,41 @@
+فرض کن دو تا اینترفیس WAN داری:
+
+ether1 (Gateway: 192.168.1.1)
+ether2 (Gateway: 192.168.2.1)
+و شبکه داخلی‌ات 192.168.10.0/24 است.
+
+گام ۱: تعریف Routing Tableها برای هر WAN
+bash
+/routing table add name=to_WAN1 fib
+/routing table add name=to_WAN2 fib
+گام ۲: نوشتن روت‌ها (هم روت‌های تفکیک شده و هم روت‌های اصلی با اولویت‌های متفاوت برای Failover)
+bash
+# روت‌های مخصوص جدول‌های ترافیکی
+/ip route add dst-address=0.0.0.0/0 gateway=192.168.1.1 routing-table=to_WAN1
+/ip route add dst-address=0.0.0.0/0 gateway=192.168.2.1 routing-table=to_WAN2
+
+# روت‌های جدول Main (با فاصله یا Distance متفاوت برای اینکه اگر یکی قطع شد، ترافیک مارک نشده نخوابد)
+/ip route add dst-address=0.0.0.0/0 gateway=192.168.1.1 distance=1
+/ip route add dst-address=0.0.0.0/0 gateway=192.168.2.1 distance=2
+گام ۳: نوشتن رول‌های Mangle (قلب تپنده PCC)
+باید ترافیک ورودی به روتر را تقسیم کنیم (تقسیم بر ۲ چون دو تا WAN داریم):
+
+bash
+# تعریف کانکشن اول برای WAN1
+/ip firewall mangle add chain=prerouting dst-address-type=!local src-address=192.168.10.0/24 \
+    per-connection-classifier=both-addresses-and-ports:2/0 action=mark-connection \
+    new-connection-mark=WAN1_conn passthrough=yes
+
+# تعریف کانکشن دوم برای WAN2
+/ip firewall mangle add chain=prerouting dst-address-type=!local src-address=192.168.10.0/24 \
+    per-connection-classifier=both-addresses-and-ports:2/1 action=mark-connection \
+    new-connection-mark=WAN2_conn passthrough=yes
+حالا بر اساس کانکشن مارک‌ها، روتینگ مارک می‌زنیم تا ترافیک به سمت جدول روت مناسب هدایت شود:
+
+bash
+/ip firewall mangle add chain=prerouting connection-mark=WAN1_conn src-address=192.168.10.0/24 \
+    action=mark-routing new-routing-mark=to_WAN1 passthrough=no
+
+/ip firewall mangle add chain=prerouting connection-mark=WAN2_conn src-address=192.168.10.0/24 \
+    action=mark-routing new-routing-mark=to_WAN2 passthrough=no
+(نکته: برای سناریوی کامل، باید رول‌های مربوط به ورودی از بیرون (input chain) را هم بنویسی تا اگر کسی از بیرون به IP هر کدام از WANها وصل شد، پاسخ از همان WAN برگردد. اما برای شروع همین بخش خروجی کلاینت‌ها کافیست).
