@@ -1,0 +1,20 @@
+دو تا اینترنت (یا دو تا Gateway)
+
+WAN1 (gateway: 192.168.1.1)
+WAN2 (gateway: 10.0.0.1)
+می‌خوای ترافیک شبکه 192.168.10.0/24 همیشه از WAN2 بره.
+
+گام 1: ساخت Routing Table جدید
+bash
+/routing table add name=to-WAN2 fib
+گام 2: روت‌نویسی در جدول جدید
+bash
+/ip route add dst-address=0.0.0.0/0 gateway=10.0.0.1 routing-table=to-WAN2
+گام 3: مارک کردن ترافیک با Mangle (اینجا Mangle میاد وسط!)
+bash
+/ip firewall mangle add chain=prerouting src-address=192.168.10.0/24 action=mark-routing new-routing-mark=to-WAN2
+
+تست 
+
+ترافیک شبکه 192.168.10.0/24 رو بنداز.
+از Traceroute استفاده کن تا ببینی بسته واقعاً از WAN2 (Gateway: 10.0.0.1) میره یا نه.
