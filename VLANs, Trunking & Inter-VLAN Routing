@@ -1,0 +1,51 @@
+
+یک سوئیچ (مثلاً Sw-Access)
+دو تا کامپیوتر (PC-Admin و PC-User)
+یک روتر (برای انجام Inter-VLAN Routing یا همان Router-on-a-Stick)
+گام ۱: ایجاد VLANها روی سوئیچ
+cisco
+conf t
+vlan 10
+ name Admin
+vlan 20
+ name User
+exit
+گام ۲: اختصاص پورت‌ها به VLANها (Access Mode)
+cisco
+interface fastEthernet 0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+
+interface fastEthernet 0/2
+ switchport mode access
+ switchport access vlan 20
+exit
+گام ۳: تنظیم پورت Trunk (وصل شدن به روتر یا سوئیچ دیگه)
+فرض کن پورت GigabitEthernet 0/1 قرار هست به روتر وصل بشه:
+
+cisco
+interface gigabitEthernet 0/1
+ switchport mode trunk
+exit
+گام ۴: تنظیم Router-on-a-Stick (برای ارتباط بین VLANها)
+حالا باید روی روتر، برای هر VLAN یک Sub-interface بسازی که نقش Gateway رو بازی کنه:
+
+cisco
+interface gigabitEthernet 0/0
+ no shutdown
+exit
+
+interface gigabitEthernet 0/0.10
+ encapsulation dot1Q 10
+ ip address 192.168.10.1 255.255.255.0
+exit
+
+interface gigabitEthernet 0/0.20
+ encapsulation dot1Q 20
+ ip address 192.168.20.1 255.255.255.0
+exit
+
+تست
+
+باید پینگ بگیریم از دوتا کلاینت های هر طرف
