@@ -1,0 +1,20 @@
+سرفصل‌ها
+لاگ‌های مهم:
+bash
+  /var/log/
+journalctl
+auth logs
+syslog basics
+disk / memory / cpu usage:
+bash
+  df -h
+  du -sh
+  free -m
+  uptime
+  vmstat
+basic monitoring mindset
+
+خروجی مورد انتظار
+پیدا کردن خطا در لاگ
+بررسی مصرف منابع
+تشخیص اولیه incident یا misconfig
