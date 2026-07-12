@@ -1,0 +1,30 @@
+سرفصل‌ها
+process مفهوم
+دستورات:
+bash
+  ps
+  top
+  htop
+  kill
+  pkill
+  pgrep
+  jobs
+  bg
+  fg
+  nohup
+systemd:
+bash
+  systemctl status
+  systemctl start
+  systemctl stop
+  systemctl restart
+  systemctl enable
+  systemctl disable
+journal logs:
+bash
+  journalctl
+
+خروجی مورد انتظار
+مشاهده و مدیریت processها
+مدیریت سرویس‌ها
+تحلیل سرویس fail شده
