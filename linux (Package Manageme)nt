@@ -1,0 +1,18 @@
+بسته به distro:
+
+Debian/Ubuntu:
+bash
+  apt update
+  apt install
+  apt remove
+  apt upgrade
+RHEL-like:
+bash
+  dnf
+  yum
+  rpm
+
+خروجی مورد انتظار
+نصب/حذف/آپدیت پکیج
+فهم dependency
+پیدا کردن باینری نصب‌شده
