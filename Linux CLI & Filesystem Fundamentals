@@ -1,0 +1,28 @@
+Linux CLI & Filesystem Fundamentals
+سرفصل‌ها
+ساختار دایرکتوری‌ها:
+bash
+  / /home /etc /var /opt /tmp /usr /root
+دستورات پایه:
+bash
+  pwd
+  ls
+  cd
+  mkdir
+  touch
+  cp
+  mv
+  rm
+  cat
+  less
+  head
+  tail
+  find
+  locate
+wildcard و path handling
+absolute vs relative path
+text viewing و file inspection
+خروجی مورد انتظار
+درک کامل navigation
+ساخت/حذف/جابجایی فایل و دایرکتوری
+پیدا کردن فایل‌ها در سیستم
