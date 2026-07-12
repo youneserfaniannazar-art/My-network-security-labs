@@ -1,0 +1,17 @@
+سرفصل‌ها
+ssh client/server
+key-based authentication
+hardening اولیه
+فایل‌های مهم:
+bash
+  ~/.ssh/
+  /etc/ssh/sshd_config
+disable password login
+disable root login
+port hardening
+fail2ban concept
+
+خروجی مورد انتظار
+اتصال امن با key
+سخت‌سازی اولیه SSH
+جلوگیری از access ضعیف
