@@ -1,0 +1,22 @@
+سرفصل‌ها
+shebang
+variables
+condition
+loop
+exit code
+positional parameters
+basic automation
+مثال:
+
+bash
+#!/bin/bash
+if ping -c 1 8.8.8.8 > /dev/null; then
+  echo "Internet OK"
+else
+  echo "Internet Down"
+fi
+
+خروجی مورد انتظار
+نوشتن اسکریپت ساده
+اتومات‌سازی taskهای تکراری
+چک سلامت سرویس یا شبکه
