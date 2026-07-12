@@ -1,0 +1,27 @@
+سرفصل‌ها
+user/group concepts
+دستورها:
+bash
+  id
+  whoami
+  useradd
+  passwd
+  usermod
+  groupadd
+  chmod
+  chown
+  chgrp
+permission model:
+read / write / execute
+owner / group / others
+symbolic و numeric mode:
+bash
+  chmod 755 file
+  chmod u+x file
+sudo basics
+/etc/passwd, /etc/shadow, /etc/group
+
+خروجی مورد انتظار
+ساخت یوزر و گروه
+اعمال permission
+تحلیل دسترسی فایل‌ها
