@@ -1,0 +1,10 @@
+سرفصل‌ها
+مفاهیم packet filtering
+ufw یا iptables یا nftables (ترتیب پیشنهادی: اول ufw برای فهم رفتار، بعد iptables)
+allow / deny / port-based filtering
+SSH access control
+
+خروجی مورد انتظار
+باز/بستن پورت
+محدودسازی دسترسی
+تست ارتباط بعد از اعمال rule
