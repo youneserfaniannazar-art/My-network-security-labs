@@ -1,0 +1,29 @@
+گام ۱: پیکربندی EtherChannel روی هر دو سوئیچ
+روی هر دو سوئیچ، پورت‌هایی که کابل بهشون وصله رو انتخاب کن (مثلاً fa0/1 و fa0/2):
+
+cisco
+conf t
+interface range fastEthernet 0/1-2
+ channel-protocol lacp
+ channel-group 1 mode active
+exit
+(نکته: دستور mode active یعنی این سوئیچ به صورت فعال (Active) درخواست LACP می‌فرسته).
+
+گام ۲: تنظیم اینترفیس Port-Channel
+حالا که پورت‌ها رو گروه کردی، باید تنظیمات Trunk رو روی اینترفیسِ ساخته شده (Port-Channel 1) انجام بدی:
+
+cisco
+interface port-channel 1
+ switchport mode trunk
+ switchport trunk allowed vlan all
+exit
+گام ۳: تایید صحت عملکرد
+دستور زیر رو روی هر دو سوئیچ بزن تا ببینی وضعیت چطوره:
+
+cisco
+show etherchannel summary
+باید در خروجی عبارت SU رو ببینی (یعنی Switched و Up/In Use).
+
+تست 
+
+یکبار دیگه show spanning-tree رو بزن. باید ببینی اون Port-Channel 1 (به جای دو تا پورت جداگانه) به عنوان یک لینک واحد در شبکه نمایش داده میشه.
