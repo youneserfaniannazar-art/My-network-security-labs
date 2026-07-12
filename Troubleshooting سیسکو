@@ -1,0 +1,32 @@
+بفهمی مشکل از Layer 1 / 2 / 3 است یا از Policy.
+با show commandها سریع ریشه مشکل را پیدا کنی.
+بین VLAN, Trunk, STP, EtherChannel, OSPF, ACL فرق عیب را تشخیص بدهی.
+
+دستورهای اصلی که باید مسلط باشی
+cisco
+****show ip interface brief
+****show interfaces
+****show vlan brief
+****show interfaces trunk
+****show spanning-tree
+****show etherchannel summary
+****show ip route
+****show ip ospf neighbor
+****show access-lists
+****show running-config
+****show cdp neighbors
+
+روش فکر کردن
+اول چک کن اینترفیس up هست یا نه.
+بعد VLAN و trunk را بررسی کن.
+بعد STP و EtherChannel را ببین.
+بعد routing و OSPF را چک کن.
+آخر سر ACL را بررسی کن.
+تمرین عملی
+یک سناریو را خودت عمداً خراب کن و بعد درستش کن:
+
+یک trunk را access کن
+یک VLAN را از پورت بردار
+یک ACL را اشتباه apply کن
+یک OSPF network statement را حذف کن
+بعد با show commandها پیدا کن مشکل کجاست.
