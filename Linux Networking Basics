@@ -1,0 +1,22 @@
+سرفصل‌ها
+interface inspection:
+bash
+  ip addr
+  ip link
+  ip route
+  ss -tulnp
+  ping
+  traceroute
+  dig
+  nslookup
+  curl
+  wget
+hostname / DNS
+routing basics
+بررسی پورت‌های باز
+network troubleshooting
+
+خروجی مورد انتظار
+دیدن IP و route
+تشخیص مشکل DNS / route / connectivity
+بررسی سرویس‌های listening
