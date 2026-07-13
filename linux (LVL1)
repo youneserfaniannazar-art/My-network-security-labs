@@ -1,0 +1,22 @@
+ساخت دایرکتوری:
+bash
+mkdir -p ~/lab/linux-basics/{docs,configs,scripts}
+ساخت چند فایل تست:
+bash
+touch ~/lab/linux-basics/docs/note1.txt
+touch ~/lab/linux-basics/configs/app.conf
+touch ~/lab/linux-basics/scripts/test.sh
+تمرین navigation و inspection:
+bash
+pwd
+ls -la
+cd ~/lab/linux-basics
+find . -type f
+مشاهده محتوای فایل:
+bash
+echo "Linux Lab Start" > ~/lab/linux-basics/docs/note1.txt
+cat ~/lab/linux-basics/docs/note1.txt
+کپی و جابجایی:
+bash
+cp ~/lab/linux-basics/docs/note1.txt ~/lab/linux-basics/docs/note1-copy.txt
+mv ~/lab/linux-basics/configs/app.conf ~/lab/linux-basics/configs/app-backup.conf
