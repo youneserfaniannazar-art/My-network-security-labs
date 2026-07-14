@@ -1,0 +1,114 @@
+شناسایی هویت کاربر و گروه:
+bash
+  whoami
+  id
+  groups
+
+ساخت و مدیریت کاربر و گروه:
+bash
+  sudo useradd ali
+  sudo passwd ali
+  sudo groupadd netadmin
+  sudo usermod -aG netadmin ali
+
+مشاهده فایل‌های هویتی سیستم:
+bash
+  /etc/passwd
+  /etc/shadow
+  /etc/group
+بررسی permission:
+bash
+  ls -l
+
+تغییر مالکیت و گروه:
+bash
+  sudo chown ali file.txt
+  sudo chown ali:netadmin file.txt
+  sudo chgrp netadmin file.txt
+تغییر permission با روش عددی و نمادین:
+bash
+  chmod 755 script.sh
+  chmod 640 secret.txt
+  chmod u+x script.sh
+  chmod go-r secret.txt
+
+
+هر فایل سه سطح دسترسی دارد: owner, group, others
+هر سطح سه نوع permission دارد: r, w, x
+روی فایل، x یعنی قابلیت اجرا
+روی دایرکتوری، x یعنی قابلیت traverse یا ورود به مسیر
+chmod 755 یعنی:
+owner = rwx
+group = r-x
+others = r-x
+chmod 640 یعنی:
+owner = rw-
+group = r--
+others = ---
+
+ساخت کاربر و گروه
+bash
+sudo groupadd netlab
+sudo useradd -m -s /bin/bash yunus
+sudo useradd -m -s /bin/bash analyst
+sudo usermod -aG netlab yunus
+sudo usermod -aG netlab analyst
+
+تعیین پسورد
+bash
+sudo passwd yunus
+sudo passwd analyst
+
+ساخت فضای تمرین
+bash
+mkdir -p ~/lab/linux-permissions/shared
+touch ~/lab/linux-permissions/shared/note.txt
+echo "permission lab" > ~/lab/linux-permissions/shared/note.txt
+
+تغییر مالکیت فایل
+bash
+sudo chown yunus:netlab ~/lab/linux-permissions/shared/note.txt
+ls -l ~/lab/linux-permissions/shared/note.txt
+
+اعمال permissionهای مختلف
+bash
+chmod 640 ~/lab/linux-permissions/shared/note.txt
+ls -l ~/lab/linux-permissions/shared/note.txt
+
+ساخت اسکریپت و قابل‌اجرا کردن آن
+bash
+echo 'echo hello from script' > ~/lab/linux-permissions/test.sh
+chmod 755 ~/lab/linux-permissions/test.sh
+~/lab/linux-permissions/test.sh
+
+بررسی هویت و عضویت
+bash
+id yunus
+id analyst
+groups yunus
+groups analyst
+
+تست‌
+
+چک کن فایل note.txt برای owner قابل نوشتن باشد
+چک کن اعضای گروه فقط بتوانند بخوانند
+چک کن دیگران هیچ دسترسی نداشته باشند
+چک کن اسکریپت بدون x اجرا نشود و بعد از chmod +x اجرا شود
+چک کن تفاوتpermission فایل و دایرکتوری را درک کرده باشی
+
+
+خروجی id, groups, ls -l
+تفاوت
+chown   >>>>>>برای تغیییر مالکیت فابل
+chgrp   >>>>>>برای تغییر گروه فابل
+chmod   >>>>>>برای تغییر پرمیشن فایل
+تفاوت numeric mode و symbolic mode
+توضیح معنی rwx     >>>>>>>عدد هغت یعنی فول دسترسی 
+1 میشه (X) xecute
+2 میشه (W) write
+4 میشه (R) read
+مثال واقعی از 640, 644, 755, 700
+نوت کوتاه درباره نقش
+/etc/passwd    >>>>>>>> اطلاعات پسورد ها
+/etc/shadow    >>>>>>>> اطلاعات یوزر ها 
+/etc/group     >>>>>>>> اطلاعات گروه ها
