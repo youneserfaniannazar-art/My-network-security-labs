@@ -1,0 +1,81 @@
+Linux Networking Basics
+
+سرفصل‌ها
+
+بررسی interface و IP:
+bash
+  ip addr
+  ip link
+  hostname -I
+بررسی routing:
+bash
+  ip route
+تست ارتباط:
+bash
+  ping 8.8.8.8
+  ping google.com
+  traceroute 8.8.8.8
+تست DNS:
+bash
+  dig google.com
+  nslookup google.com
+  cat /etc/resolv.conf
+بررسی پورت‌ها و socketها:
+bash
+  ss -tulnp
+  ss -tunap
+تست HTTP و سرویس:
+bash
+  curl http://example.com
+  wget http://example.com
+بررسی hostname:
+bash
+  hostname
+  cat /etc/hosts
+
+
+نکات مفهومی که باید دقیق بفهمی
+
+
+ip addr نشان می‌دهد روی هر interface چه IPهایی هست
+ip link وضعیت لایه 2 اینترفیس را نشان می‌دهد؛ مثلاً UP یا DOWN
+ip route می‌گوید ترافیک از کدام gateway خارج می‌شود
+اگر ping 8.8.8.8 کار کند ولی ping google.com نه، معمولاً مشکل DNS است
+ss -tulnp یکی از مهم‌ترین دستورها برای دیدن پورت‌های listening و processهای مرتبط است
+curl برای تست واقعی سرویس خیلی بهتر از فقط ping گرفتن است، چون لایه application را هم بررسی می‌کند
+
+تست
+
+DNS را اشتباه کن و ببین:
+ping 8.8.8.8 کار می‌کند
+ping google.com fail می‌شود
+default route را بررسی کن و بفهم اگر نباشد چه می‌شود
+یک سرویس مثل nginx را stop کن و با curl و ss تشخیص بده مشکل از سرویس است نه از network
+اگر interface down شد، با ip link تشخیص بده
+
+
+چیزهایی که باید بتوانی تفسیر کنی
+
+خروجی ip addr
+خروجی ip route
+تفاوت LISTEN و connectionهای active در ss
+تفاوت مشکل DNS با مشکل routing
+تفاوت مشکل service-level با مشکل network-level
+
+نکات اصلی برای کار 
+
+خروجی ip addr, ip route, ss -tulnp
+تفاوت ping IP و ping domain
+نقش DNS, default gateway, route
+فرق curl با ping
+سناریوی troubleshooting:
+مشکل DNS
+مشکل route
+مشکل service down
+Definition of Done
+
+بتوانی IP و interfaceها را بررسی کنی
+بتوانی route پیش‌فرض را پیدا کنی
+بتوانی فرق مشکل DNS و connectivity را تشخیص بدهی
+بتوانی پورت listening و process مرتبط را پیدا کنی
+بتوانی با curl و ss یک سرویس را تست کنی
