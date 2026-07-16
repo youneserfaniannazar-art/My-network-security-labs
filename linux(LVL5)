@@ -1,0 +1,37 @@
+ Package Management
+
+
+سرفصل‌ها
+
+مدیریت مخازن و ایندکس پکیج‌ها:
+bash
+  sudo apt update
+نصب، حذف و ارتقا:
+bash
+  sudo apt install nginx
+  sudo apt remove nginx
+  sudo apt purge nginx
+  sudo apt upgrade
+جست‌وجوی پکیج:
+bash
+  apt search nginx
+  apt show nginx
+بررسی پکیج نصب‌شده:
+bash
+  dpkg -l
+  dpkg -l | grep nginx
+پیدا کردن فایل‌ها و باینری‌های مربوط به پکیج:
+bash
+  dpkg -L nginx
+  which nginx
+فهم dependency و cleanup:
+bash
+  apt depends nginx
+  sudo apt autoremove
+نکات مفهومی که باید دقیق بفهمی
+
+apt update فقط لیست پکیج‌ها را تازه می‌کند، چیزی نصب نمی‌کند
+apt upgrade پکیج‌های نصب‌شده را ارتقا می‌دهد
+remove معمولاً کانفیگ را نگه می‌دارد، ولی purge کانفیگ را هم پاک می‌کند
+dpkg سطح پایین‌تر از apt است؛ apt dependencyها را بهتر مدیریت می‌کند
+همیشه باید بدانی چه چیزی نصب شده، از کدام repo آمده، و چه فایل‌هایی روی سیستم گذاشته
