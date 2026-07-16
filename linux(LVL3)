@@ -1,0 +1,85 @@
+Process & Service Management
+
+سرفصل‌ها
+
+مشاهده processها:
+bash
+  ps aux
+  ps -ef
+  top
+  htop
+  pgrep ssh
+کشتن یا مدیریت process:
+bash
+  kill PID
+  kill -9 PID
+  pkill nginx
+job control:
+bash
+  jobs
+  bg
+  fg
+  nohup
+مدیریت سرویس‌ها با systemd:
+bash
+  systemctl status ssh
+  systemctl start ssh
+  systemctl stop ssh
+  systemctl restart ssh
+  systemctl enable ssh
+  systemctl disable ssh
+بررسی لاگ سرویس:
+bash
+  journalctl -u ssh
+  journalctl -xe
+بررسی پورت و process مرتبط:
+bash
+  ss -tulnp
+نکات مفهومی که باید دقیق بفهمی
+
+process یعنی یک برنامه در حال اجرا
+هر process یک PID دارد
+service معمولاً یک process یا مجموعه‌ای از processهاست که توسط systemd مدیریت می‌شود
+systemctl status فقط وضعیت نمی‌دهد؛ معمولاً سرنخ خطا هم می‌دهد
+journalctl یکی از مهم‌ترین ابزارهای عیب‌یابی لینوکس است
+بین kill, pkill, kill -9 تفاوت هست؛ -9 آخرین راه است، نه انتخاب اول
+
+
+تست
+
+
+نصب سرویس
+bash
+sudo apt update
+sudo apt install nginx -y
+بررسی وضعیت سرویس
+bash
+systemctl status nginx
+بررسی process مربوط
+bash
+ps aux | grep nginx
+pgrep nginx
+بررسی پورت listening
+bash
+ss -tulnp | grep nginx
+ss -tulnp | grep :80
+stop / start / restart
+bash
+sudo systemctl stop nginx
+sudo systemctl start nginx
+sudo systemctl restart nginx
+فعال‌سازی در boot
+bash
+sudo systemctl enable nginx
+sudo systemctl disable nginx
+بررسی لاگ
+bash
+journalctl -u nginx
+تست job control
+bash
+sleep 300 &
+jobs
+fg
+تست nohup
+bash
+nohup sleep 300 &
