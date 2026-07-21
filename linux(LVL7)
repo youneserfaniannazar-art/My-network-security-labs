@@ -1,0 +1,110 @@
+1) مفهوم لاگ در لینوکس
+لاگ‌ها ردپای اتفاقات سیستم‌اند:
+
+خطاهای سرویس‌ها
+ورود و خروج کاربران
+تلاش‌های ناموفق SSH
+رویدادهای کرنل
+تغییرات شبکه و فایروال
+دو منبع اصلی که باهاش کار می‌کنیم:
+
+/var/log/
+journalctl برای systemd
+2) فایل‌های مهم در /var/log
+چند فایل مهم که باید بشناسی:
+
+/var/log/syslog یا /var/log/messages برای رویدادهای عمومی سیستم
+/var/log/auth.log برای احراز هویت، SSH، sudo، login
+/var/log/kern.log برای لاگ‌های کرنل
+/var/log/ufw.log برای لاگ‌های فایروال
+/var/log/dpkg.log برای نصب و حذف پکیج‌ها
+3) کار با journalctl
+journalctl لاگ‌های systemd را می‌خواند و خیلی مهم است.
+
+دستورهای پایه:
+
+bash
+journalctl
+journalctl -xe
+journalctl -u ssh
+journalctl -u nginx
+journalctl -p err
+journalctl --since "today"
+journalctl --since "1 hour ago"
+چیزهایی که باید یاد بگیری:
+
+فیلتر بر اساس سرویس
+فیلتر بر اساس زمان
+دیدن errorها
+پیدا کردن علت crash شدن سرویس
+4) سناریوهای عملی
+سناریو 1: سرویس بالا نمی‌آید
+اول:
+
+bash
+systemctl status nginx
+journalctl -u nginx
+اگر service failed بود:
+
+config اشتباه است
+پورت اشغال شده
+permission مشکل دارد
+dependency نصب نیست
+سناریو 2: SSH لاگین ناموفق
+ببین:
+
+bash
+sudo tail -f /var/log/auth.log
+یا:
+
+bash
+journalctl -u ssh
+اینجا می‌فهمی:
+
+پسورد اشتباه بوده
+key auth fail شده
+IP مشکوک brute-force کرده
+root login رد شده
+سناریو 3: فایروال جلوی ترافیک را گرفته
+bash
+sudo tail -f /var/log/ufw.log
+اینجا می‌بینی:
+
+پورت بسته بوده
+مقصد یا source drop شده
+deny رخ داده یا reject
+5) ابزارهای خیلی کاربردی
+bash
+tail -f /var/log/auth.log
+grep "Failed password" /var/log/auth.log
+grep "Accepted" /var/log/auth.log
+grep -i "error" /var/log/syslog
+less /var/log/syslog
+نکته مهم:
+
+tail -f برای مشاهده زنده
+grep برای فیلتر
+less برای مرور دقیق
+journalctl برای دنیای systemd
+6) نگاه امنیتی
+در این مرحله باید یاد بگیری این الگوها را تشخیص بدهی:
+
+Failed password = تلاش ناموفق SSH
+Accepted password = ورود موفق
+repeated failures = brute force احتمالی
+sudo activity = فعالیت مدیریتی
+service restart loops = مشکل کانفیگ یا attack surface
+7) لاب پیشنهادی
+روی سیستم آزمایشی:
+8) خراب‌کاری عمدی برای یادگیری
+این بخش خیلی مهمه:
+
+یک پورت را در UFW ببند و ببین سرویس چه رفتاری دارد
+یک config فایل سرویس را خراب کن و error را از journal بخوان
+یک login ناموفق بساز و الگوی آن را در auth log پیدا کن
+سرویس را restart کن و تغییر لاگ را ببین
+چند بار با پسورد اشتباه SSH بزن.
+لاگ auth.log را بررسی کن.
+یک سرویس را intentionally خراب کن.
+لاگ journalctl -u سرویس را تحلیل کن.
+یک rule فایروال اضافه کن و اثرش را در ufw.log ببین.
