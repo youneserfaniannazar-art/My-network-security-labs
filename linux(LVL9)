@@ -1,0 +1,168 @@
+ SSH Hardening
+
+فایل و سرویس مهم
+فایل اصلی تنظیمات:
+
+bash
+/etc/ssh/sshd_config
+سرویس:
+
+bash
+sudo systemctl status ssh
+بعد از هر تغییر:
+
+bash
+sudo sshd -t
+sudo systemctl restart ssh
+نکته خیلی مهم:
+
+همیشه قبل از بستن سشن فعلی، یک سشن SSH جدید باز کن و تست بگیر.
+اگر اشتباه کانفیگ بدهی، ممکن است خودت را از سرور بیرون بیندازی.
+3) Hardening پایه
+تغییر پورت پیش‌فرض
+پورت 22 هدف دائمی اسکنرهاست. تغییر پورت معجزه نیست، ولی نویز حمله را کم می‌کند.
+
+bash
+Port 2222
+بعد باید در فایروال هم بازش کنی:
+
+bash
+sudo ufw allow 2222/tcp
+غیرفعال کردن ورود مستقیم root
+bash
+PermitRootLogin no
+منطق:
+
+مهاجم اول root را امتحان می‌کند
+بهتر است با یوزر عادی وارد شوی و بعد sudo بزنی
+غیرفعال کردن Password Authentication
+اگر Key-based auth داری:
+
+bash
+PasswordAuthentication no
+این یکی از مهم‌ترین تنظیمات است، چون brute-force پسورد را تقریباً بی‌اثر می‌کند.
+
+محدود کردن کاربران مجاز
+فقط یوزرهای لازم اجازه ورود داشته باشند:
+
+bash
+AllowUsers yunus
+یا:
+
+bash
+AllowGroups sshusers
+4) احراز هویت با SSH Key
+روی کلاینت:
+
+bash
+ssh-keygen -t ed25519
+کپی کلید عمومی روی سرور:
+
+bash
+ssh-copy-id -p 2222 user@server_ip
+ورود تستی:
+
+bash
+ssh -p 2222 user@server_ip
+اگر ورود با کلید درست کار کرد، بعد سراغ بستن پسورد برو.
+
+5) تنظیمات مهم دیگر
+این‌ها هم ارزش امنیتی دارند:
+
+bash
+MaxAuthTries 3
+LoginGraceTime 30
+X11Forwarding no
+PermitEmptyPasswords no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+منطقشان:
+
+MaxAuthTries: تعداد تلاش ناموفق را کم می‌کند
+LoginGraceTime: زمان باز بودن نشست احراز هویت را محدود می‌کند
+X11Forwarding no: سطح حمله را کم می‌کند
+PermitEmptyPasswords no: بدیهی ولی ضروری
+ClientAlive*: سشن‌های مرده را جمع می‌کند
+6) Fail2Ban
+این ابزار برای مقابله با brute-force عالی است. لاگ‌ها را می‌خواند و IP مهاجم را موقتاً ban می‌کند.
+
+نصب:
+
+bash
+sudo apt update
+sudo apt install fail2ban -y
+بررسی وضعیت:
+
+bash
+sudo systemctl status fail2ban
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+فایل تنظیم محلی:
+
+bash
+/etc/fail2ban/jail.local
+نمونه تنظیم پایه:
+
+ini
+[sshd]
+enabled = true
+port = 2222
+logpath = /var/log/auth.log
+maxretry = 5
+findtime = 10m
+bantime = 1h
+بعد:
+
+bash
+sudo systemctl restart fail2ban
+7) سناریوی امن‌سازی واقعی
+فرض کن یک VPS تازه بالا آمده. ترتیب درست این است:
+
+ساخت یوزر عادی با sudo
+تولید SSH key
+کپی کلید روی سرور
+تغییر پورت SSH
+باز کردن پورت جدید در UFW
+تست ورود با پورت جدید
+بستن root login
+بستن PasswordAuthentication
+نصب و تنظیم Fail2Ban
+بررسی لاگ‌ها
+این ترتیب مهم است. اگر زودتر پسورد را ببندی یا پورت را عوض کنی بدون تست، احتمال lockout داری.
+
+8) لاگ‌ها و مانیتورینگ
+برای بررسی حمله یا خطا:
+
+bash
+sudo tail -f /var/log/auth.log
+journalctl -u ssh
+grep "Failed password" /var/log/auth.log
+grep "Accepted publickey" /var/log/auth.log
+چیزهایی که باید تشخیص بدهی:
+
+Failed password = تلاش ناموفق
+Accepted publickey = ورود موفق با کلید
+تلاش برای invalid user
+تکرار IPهای مشکوک
+
+9) تست
+
+این لاب را حتماً انجام بده:
+
+یک VM یا سرور تست آماده کن
+یک یوزر عادی بساز
+SSH key راه‌اندازی کن
+پورت SSH را از 22 به 2222 تغییر بده
+Rule فایروال مناسب اضافه کن
+ورود root را ببند
+ورود با پسورد را ببند
+Fail2Ban نصب کن
+عمداً چند بار با credential اشتباه لاگین بزن
+لاگ و ban شدن IP را بررسی کن
+
+10) خراب‌کاری عمدی
+
+پورت SSH را عوض کن ولی در UFW باز نکن؛ بعد دلیل قطع شدن را تحلیل کن
+sshd_config را اشتباه بنویس و با sshd -t خطا را پیدا کن
+کلید اشتباه تست کن و لاگش را بخوان
+Fail2Ban را با پورت اشتباه تنظیم کن و علت عمل نکردنش را پیدا کن
