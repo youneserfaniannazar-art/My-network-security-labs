@@ -1,0 +1,136 @@
+Web Servers & Hardening
+
+ساخت یک سایت ساده
+یک دایرکتوری برای سایت بساز:
+
+bash
+sudo mkdir -p /var/www/example.com/html
+sudo chown -R $USER:$USER /var/www/example.com/html
+یک فایل HTML ساده ایجاد کن:
+
+
+نمایش کد
+
+
+echo "<h1>example.com</h1>" > /var/www/example.com/html/index.html
+6) ساخت Server Block در Nginx
+فایل تنظیمات:
+
+bash
+sudo nano /etc/nginx/sites-available/example.com
+نمونه:
+
+nginx
+server {
+    listen 80;
+    server_name example.com www.example.com;
+
+    root /var/www/example.com/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+فعال‌سازی:
+
+bash
+sudo ln -s /etc/nginx/sites-available/example.com /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+7) HTTPS و SSL
+در دنیای واقعی، HTTP کافی نیست. باید HTTPS داشته باشی.
+
+برای گواهی رایگان:
+
+Let's Encrypt
+ابزار certbot
+نصب:
+
+bash
+sudo apt install certbot python3-certbot-nginx -y
+صدور گواهی:
+
+bash
+sudo certbot --nginx -d example.com -d www.example.com
+بعد از این، سایتت باید با HTTPS بالا بیاید.
+
+8) Hardening پایه برای Nginx
+مخفی کردن نسخه
+در فایل اصلی Nginx یا server block:
+
+nginx
+server_tokens off;
+محدود کردن methodها
+اگر لازم نیست، متدهای غیرضروری را محدود کن.
+
+تنظیمات header امنیتی
+می‌توانی هدرهای امنیتی اضافه کنی:
+
+nginx
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer-when-downgrade" always;
+جلوگیری از directory listing
+nginx
+autoindex off;
+9) ارتباط با UFW
+اگر وب‌سرور داری، باید پورت‌های لازم را باز کنی:
+
+bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+و البته SSH را هم فراموش نکنی.
+
+10) لاگ‌های وب‌سرور
+برای عیب‌یابی، این‌ها خیلی مهم‌اند:
+
+bash
+/var/log/nginx/access.log
+/var/log/nginx/error.log
+دیدن زنده:
+
+bash
+tail -f /var/log/nginx/error.log
+چیزهایی که باید تشخیص بدهی:
+
+404 = فایل پیدا نشد
+403 = permission یا access denied
+500 = خطای داخلی یا config/app
+502/504 = مشکل upstream یا backend
+11) سناریوی امنیتی
+فرض کن:
+
+سایت بالا می‌آید
+اما یک مسیر خاص نباید عمومی باشد
+یا می‌خواهی فقط یک IP خاص به یک بخش admin دسترسی داشته باشد
+مثال محدودسازی IP:
+
+nginx
+location /admin {
+    allow 192.168.1.50;
+    deny all;
+}
+این خیلی مهم است چون امنیت فقط باز کردن پورت نیست؛ کنترل دسترسی هم هست.
+
+12) تست
+
+این لاب را انجام بده:
+
+Nginx نصب کن
+یک سایت ساده بساز
+یک Server Block اختصاصی تنظیم کن
+HTTPS را با Let’s Encrypt فعال کن
+هدرهای امنیتی اضافه کن
+server_tokens را خاموش کن
+یک مسیر admin بساز و فقط به یک IP اجازه بده
+لاگ‌ها را بررسی کن
+عمداً permission اشتباه بده و خطای 403 را تحلیل کن
+13) خراب‌کاری عمدی
+برای یادگیری عمیق:
+
+فایل index.html را حذف کن و 404 را ببین
+permission دایرکتوری را خراب کن و 403 را تحلیل کن
+nginx.conf را اشتباه کن و با nginx -t خطا را پیدا کن
+پورت 80 را در UFW ببند و اثرش را تست کن
+Certbot را ناقص اجرا کن و خطا را بخوان
