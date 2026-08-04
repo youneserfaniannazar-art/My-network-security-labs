@@ -1,0 +1,800 @@
+
+این راهنما فرض می‌کند:
+- سیستم‌عامل: Ubuntu Server
+- یک کاربر اولیه داری که فعلاً با آن وارد سرور می‌شوی
+- اگر VPS است، دسترسی کنسول پنل هم داری
+- اگر VM است، به کنسول Hypervisor دسترسی داری
+- اگر دامنه نداری، بخش Let’s Encrypt را با Self-Signed تست می‌کنی
+- اگر دیسک دوم نداری، فاز LVM را یا روی دیسک آزمایشگاهی جدا انجام می‌دهی یا در VM یک دیسک جدید اضافه می‌کنی
+
+---
+
+# فاز ۱: Base System Preparation
+
+## هدف
+سیستم را تمیز، به‌روز و آماده Hardening کنیم.
+
+## 1.1 بررسی اولیه سیستم
+```bash
+whoami
+hostnamectl
+ip a
+lsblk
+df -h
+free -h
+systemctl list-units --type=service --state=running
+```
+
+این خروجی‌ها را نگه دار چون برای مستندسازی GitHub لازم می‌شوند.
+
+## 1.2 آپدیت کامل سیستم
+```bash
+sudo apt update
+sudo apt upgrade -y
+sudo apt autoremove -y
+```
+
+اگر کرنل آپدیت شد، بعداً Reboot خواهیم داشت.
+
+## 1.3 نصب ابزارهای پایه
+```bash
+sudo apt install -y curl wget vim git unzip htop net-tools tree rsyslog ufw fail2ban nginx lvm2
+```
+
+اگر `rsyslog` از قبل فعال نیست:
+```bash
+sudo systemctl enable rsyslog
+sudo systemctl start rsyslog
+```
+
+## 1.4 گرفتن Backup یا Snapshot اولیه
+اگر VM داری، از Hypervisor یک Snapshot بگیر.  
+اگر VPS داری، از پنل Provider Snapshot بگیر.  
+این مرحله مهم است چون بعداً روی SSH، Firewall و Disk کار می‌کنی.
+
+---
+
+# فاز ۲: User and Hostname Configuration
+
+## هدف
+کاربر مدیریتی مستقل بسازی و هویت سیستم را استاندارد کنی.
+
+## 2.1 ساخت کاربر جدید
+```bash
+sudo adduser yunusadmin
+```
+
+## 2.2 افزودن به گروه sudo
+```bash
+sudo usermod -aG sudo yunusadmin
+```
+
+## 2.3 بررسی عضویت
+```bash
+id yunusadmin
+groups yunusadmin
+```
+
+## 2.4 تنظیم hostname
+```bash
+sudo hostnamectl set-hostname web-sec-lab
+```
+
+## 2.5 اصلاح `/etc/hosts`
+فایل را باز کن:
+```bash
+sudo vim /etc/hosts
+```
+
+این خط را مطمئن شو دارد:
+```text
+127.0.1.1 web-sec-lab
+```
+
+نمونه استاندارد:
+```text
+127.0.0.1 localhost
+127.0.1.1 web-sec-lab
+```
+
+## 2.6 بررسی نتیجه
+```bash
+hostname
+hostnamectl
+cat /etc/hosts
+```
+
+---
+
+# فاز ۳: SSH Hardening
+
+## هدف
+SSH را از حالت پیش‌فرض و ضعیف، به حالت Production-Like ببری.
+
+## 3.1 ساخت کلید SSH روی سیستم خودت
+این دستور را روی **سیستم شخصی خودت** بزن، نه روی سرور:
+```bash
+ssh-keygen -t ed25519 -C "yunusadmin@web-sec-lab"
+```
+
+اگر کلید از قبل داری، لازم نیست دوباره بسازی.
+
+## 3.2 کپی کلید به سرور
+فعلاً با پورت پیش‌فرض:
+```bash
+ssh-copy-id yunusadmin@SERVER_IP
+```
+
+اگر با کاربر فعلی باید اول وارد شوی، می‌توانی موقتاً دستی هم کلید را منتقل کنی. ولی `ssh-copy-id` بهتر است.
+
+## 3.3 تست ورود با کلید
+```bash
+ssh yunusadmin@SERVER_IP
+```
+
+تا وقتی این مرحله جواب نداده، **PasswordAuthentication را غیرفعال نکن**.
+
+## 3.4 Backup از کانفیگ SSH
+```bash
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+```
+
+## 3.5 ویرایش کانفیگ SSH
+```bash
+sudo vim /etc/ssh/sshd_config
+```
+
+این تنظیمات را پیدا یا اضافه کن:
+```text
+Port 2222
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+X11Forwarding no
+MaxAuthTries 3
+AllowUsers yunusadmin
+```
+
+اگر خطی تکراری وجود دارد، در نهایت فقط یک نسخه مؤثر باقی بماند.
+
+## 3.6 بررسی Syntax
+```bash
+sudo sshd -t
+```
+
+اگر خروجی نداد یعنی Syntax درست است.
+
+## 3.7 ریستارت سرویس SSH
+روی Ubuntu معمولاً سرویس `ssh` است:
+```bash
+sudo systemctl restart ssh
+sudo systemctl status ssh
+```
+
+## 3.8 تست اتصال روی پورت جدید
+**جلسه فعلی را نبند**. در یک ترمینال جدید:
+```bash
+ssh -p 2222 yunusadmin@SERVER_IP
+```
+
+اگر وصل شد، این فاز درست پیش رفته.
+
+---
+
+# فاز ۴: UFW Firewall
+
+## هدف
+فقط سرویس‌های لازم باز باشند.
+
+## 4.1 وضعیت فعلی
+```bash
+sudo ufw status verbose
+```
+
+## 4.2 تعریف Policyها
+```bash
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+```
+
+## 4.3 بازکردن پورت‌های لازم
+```bash
+sudo ufw allow 2222/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+```
+
+## 4.4 فعال‌سازی فایروال
+```bash
+sudo ufw enable
+```
+
+## 4.5 بررسی نتیجه
+```bash
+sudo ufw status numbered
+sudo ufw status verbose
+```
+
+باید فقط همین‌ها باز باشند:
+- `2222/tcp`
+- `80/tcp`
+- `443/tcp`
+
+---
+
+# فاز ۵: Fail2Ban
+
+## هدف
+Brute-force روی SSH را مهار کنی.
+
+## 5.1 Backup از تنظیمات
+```bash
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.conf.bak
+```
+
+## 5.2 ساخت فایل local
+```bash
+sudo vim /etc/fail2ban/jail.local
+```
+
+محتوا:
+```ini
+[DEFAULT]
+bantime = 1h
+findtime = 10m
+maxretry = 3
+
+[sshd]
+enabled = true
+port = 2222
+logpath = /var/log/auth.log
+backend = systemd
+```
+
+نکته: در بعضی سیستم‌ها `backend = systemd` بهتر جواب می‌دهد. اگر بعداً لاگ را نگرفت، با `journalctl -u ssh` بررسی می‌کنی.
+
+## 5.3 فعال‌سازی سرویس
+```bash
+sudo systemctl enable fail2ban
+sudo systemctl restart fail2ban
+sudo systemctl status fail2ban
+```
+
+## 5.4 بررسی Jail
+```bash
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+```
+
+---
+
+# فاز ۶: LVM and Storage
+
+## هدف
+Storage را ساختاریافته و قابل مدیریت کنی.
+
+## هشدار خیلی مهم
+قبل از اجرای هر دستور destructive، اول این را بزن:
+```bash
+lsblk -f
+sudo fdisk -l
+```
+
+فقط وقتی مطمئن شدی دیسک دوم مثلاً `/dev/sdb` خالی و درست است ادامه بده.  
+اگر اشتباه بزنی، اطلاعات از بین می‌رود.
+
+## 6.1 ساخت Physical Volume
+فرض می‌کنیم دیسک هدف `/dev/sdb` است:
+```bash
+sudo pvcreate /dev/sdb
+```
+
+## 6.2 ساخت Volume Group
+```bash
+sudo vgcreate vg_data /dev/sdb
+```
+
+## 6.3 ساخت Logical Volumeها
+برای وب:
+```bash
+sudo lvcreate -L 5G -n lv_web vg_data
+```
+
+برای بکاپ:
+```bash
+sudo lvcreate -L 5G -n lv_backups vg_data
+```
+
+اگر دیسک بزرگ‌تر است، سایزها را متناسب بگذار.
+
+## 6.4 فرمت کردن
+```bash
+sudo mkfs.ext4 /dev/vg_data/lv_web
+sudo mkfs.ext4 /dev/vg_data/lv_backups
+```
+
+## 6.5 ساخت Mount Point
+```bash
+sudo mkdir -p /var/www/sec-lab
+sudo mkdir -p /backups
+```
+
+## 6.6 Mount موقت
+```bash
+sudo mount /dev/vg_data/lv_web /var/www/sec-lab
+sudo mount /dev/vg_data/lv_backups /backups
+```
+
+## 6.7 گرفتن UUID
+```bash
+sudo blkid /dev/vg_data/lv_web
+sudo blkid /dev/vg_data/lv_backups
+```
+
+## 6.8 افزودن به `/etc/fstab`
+```bash
+sudo vim /etc/fstab
+```
+
+دو خط مشابه این اضافه کن:
+```text
+UUID=UUID_WEB_MOUNT      /var/www/sec-lab  ext4  defaults,noatime  0  2
+UUID=UUID_BACKUPS_MOUNT  /backups          ext4  defaults,noatime  0  2
+```
+
+## 6.9 تست Mount Persistent
+```bash
+sudo umount /var/www/sec-lab
+sudo umount /backups
+sudo mount -a
+findmnt
+df -h
+```
+
+اگر خطا نداشتی، `fstab` درست است.
+
+---
+
+# فاز ۷: Nginx Deployment and Hardening
+
+## هدف
+وب‌سرور Production-Like بالا بیاید و Hardening اولیه داشته باشد.
+
+## 7.1 ساخت Document Root
+```bash
+sudo mkdir -p /var/www/sec-lab/html
+```
+
+## 7.2 تنظیم مالکیت
+```bash
+sudo chown -R www-data:www-data /var/www/sec-lab
+sudo chmod -R 755 /var/www/sec-lab
+```
+
+## 7.3 ساخت صفحه تست
+```bash
+sudo vim /var/www/sec-lab/html/index.html
+```
+
+محتوا:
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sec Lab</title>
+</head>
+<body>
+    <h1>Linux Security Capstone</h1>
+    <p>Nginx is running securely.</p>
+</body>
+</html>
+```
+
+## 7.4 Server Block
+```bash
+sudo vim /etc/nginx/sites-available/sec-lab
+```
+
+محتوا:
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name YOUR_DOMAIN_OR_SERVER_IP;
+
+    root /var/www/sec-lab/html;
+    index index.html;
+
+    server_tokens off;
+    autoindex off;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self';" always;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /admin {
+        allow 192.168.1.50;
+        deny all;
+    }
+
+    access_log /var/log/nginx/sec-lab-access.log;
+    error_log /var/log/nginx/sec-lab-error.log;
+}
+```
+
+اگر فعلاً IP داخلی نداری و فقط می‌خواهی کانفیگ بالا بیاید، می‌توانی `/admin` را فعلاً نگه داری ولی بعداً با IP واقعی خودت تنظیم کن.
+
+## 7.5 فعال‌سازی سایت
+```bash
+sudo ln -s /etc/nginx/sites-available/sec-lab /etc/nginx/sites-enabled/
+```
+
+## 7.6 حذف سایت پیش‌فرض
+```bash
+sudo rm -f /etc/nginx/sites-enabled/default
+```
+
+## 7.7 تست کانفیگ
+```bash
+sudo nginx -t
+```
+
+## 7.8 Reload
+```bash
+sudo systemctl reload nginx
+sudo systemctl enable nginx
+sudo systemctl status nginx
+```
+
+## 7.9 تست در مرورگر
+```text
+http://SERVER_IP
+```
+
+یا اگر دامنه داری:
+```text
+http://YOUR_DOMAIN
+```
+
+---
+
+# فاز ۸: HTTPS with Certbot
+
+## حالت A: دامنه واقعی داری
+
+## 8.1 نصب Certbot
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+```
+
+## 8.2 بررسی DNS
+دامنه باید به IP سرور اشاره کند.
+
+## 8.3 گرفتن گواهی
+```bash
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
+
+## 8.4 تست تمدید خودکار
+```bash
+sudo certbot renew --dry-run
+```
+
+## 8.5 بررسی
+```bash
+openssl s_client -connect yourdomain.com:443
+```
+
+---
+
+## حالت B: دامنه نداری و فقط لاب است
+
+### 8.1 ساخت Self-Signed Certificate
+```bash
+sudo mkdir -p /etc/nginx/ssl
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+-keyout /etc/nginx/ssl/sec-lab.key \
+-out /etc/nginx/ssl/sec-lab.crt
+```
+
+### 8.2 ویرایش Nginx برای HTTPS
+```bash
+sudo vim /etc/nginx/sites-available/sec-lab
+```
+
+نسخه HTTPS:
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name YOUR_DOMAIN_OR_SERVER_IP;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+
+    server_name YOUR_DOMAIN_OR_SERVER_IP;
+
+    root /var/www/sec-lab/html;
+    index index.html;
+
+    ssl_certificate /etc/nginx/ssl/sec-lab.crt;
+    ssl_certificate_key /etc/nginx/ssl/sec-lab.key;
+
+    server_tokens off;
+    autoindex off;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self';" always;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /admin {
+        allow 192.168.1.50;
+        deny all;
+    }
+
+    access_log /var/log/nginx/sec-lab-access.log;
+    error_log /var/log/nginx/sec-lab-error.log;
+}
+```
+
+### 8.3 تست و Reload
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+# فاز ۹: Logging, Monitoring and Automation
+
+## هدف
+رفتار سیستم را ببینی و Health Check خودکار داشته باشی.
+
+## 9.1 بررسی لاگ‌ها
+```bash
+sudo tail -f /var/log/auth.log
+sudo tail -f /var/log/nginx/sec-lab-access.log
+sudo tail -f /var/log/nginx/sec-lab-error.log
+```
+
+اگر `auth.log` وجود نداشت:
+```bash
+sudo journalctl -u ssh -f
+```
+
+## 9.2 ساخت اسکریپت Health Check
+```bash
+sudo vim /usr/local/bin/system_health_check.sh
+```
+
+محتوا:
+```bash
+#!/bin/bash
+
+LOG_FILE="/var/log/system_health_check.log"
+TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
+
+{
+    echo "===== Health Check: $TIMESTAMP ====="
+    echo
+
+    echo "[Disk Usage]"
+    df -h
+    echo
+
+    echo "[Service Status: ssh]"
+    systemctl is-active ssh
+    echo
+
+    echo "[Service Status: nginx]"
+    systemctl is-active nginx
+    echo
+
+    echo "[Service Status: fail2ban]"
+    systemctl is-active fail2ban
+    echo
+
+    echo "[Last 5 Failed SSH Attempts]"
+    if [ -f /var/log/auth.log ]; then
+        grep "Failed password" /var/log/auth.log | tail -n 5
+    else
+        journalctl -u ssh --no-pager | grep "Failed password" | tail -n 5
+    fi
+    echo
+} >> "$LOG_FILE"
+```
+
+## 9.3 دادن Permission اجرا
+```bash
+sudo chmod +x /usr/local/bin/system_health_check.sh
+```
+
+## 9.4 تست دستی
+```bash
+sudo /usr/local/bin/system_health_check.sh
+sudo tail -n 50 /var/log/system_health_check.log
+```
+
+---
+
+# فاز ۱۰: Backup, Verification, Troubleshooting and Documentation
+
+## 10.1 ساخت اسکریپت Backup
+```bash
+sudo vim /usr/local/bin/system_backup.sh
+```
+
+محتوا:
+```bash
+#!/bin/bash
+
+BACKUP_DIR="/backups"
+TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
+BACKUP_FILE="$BACKUP_DIR/config_backup_$TIMESTAMP.tar.gz"
+
+mkdir -p "$BACKUP_DIR"
+
+tar -czf "$BACKUP_FILE" \
+    /etc/ssh \
+    /etc/nginx \
+    /var/www/sec-lab
+
+find "$BACKUP_DIR" -type f -name "config_backup_*.tar.gz" -mtime +7 -delete
+```
+
+## 10.2 Permission اجرا
+```bash
+sudo chmod +x /usr/local/bin/system_backup.sh
+```
+
+## 10.3 تست دستی Backup
+```bash
+sudo /usr/local/bin/system_backup.sh
+ls -lh /backups
+tar -tzf /backups/$(ls /backups | tail -n 1) | head
+```
+
+## 10.4 تنظیم Cron
+```bash
+sudo crontab -e
+```
+
+این‌ها را اضافه کن:
+```cron
+*/15 * * * * /usr/local/bin/system_health_check.sh
+0 2 * * * /usr/local/bin/system_backup.sh
+```
+
+## 10.5 بررسی Cron
+```bash
+sudo crontab -l
+sudo systemctl status cron
+```
+
+---
+
+# تست‌های اجباری Troubleshooting
+
+این بخش مهم است چون فقط نصب کافی نیست؛ باید نشان بدهی می‌توانی مشکل را تشخیص بدهی.
+
+## تست ۱: SSH
+- عمداً یک خط اشتباه در `sshd_config` بگذار
+- بزن:
+```bash
+sudo sshd -t
+```
+- خطا را ببین
+- اصلاحش کن
+
+## تست ۲: Nginx Syntax Error
+- عمداً در فایل سایت یک `;` را حذف کن
+- بزن:
+```bash
+sudo nginx -t
+```
+- خطا را ثبت کن
+- اصلاح و Reload کن
+
+## تست ۳: 403 Forbidden
+```bash
+sudo chmod 000 /var/www/sec-lab/html/index.html
+```
+
+در مرورگر 403 را ببین، بعد اصلاح کن:
+```bash
+sudo chmod 644 /var/www/sec-lab/html/index.html
+```
+
+## تست ۴: 404
+```bash
+sudo mv /var/www/sec-lab/html/index.html /var/www/sec-lab/html/index.html.bak
+```
+
+در مرورگر 404 را ببین، بعد برگردان:
+```bash
+sudo mv /var/www/sec-lab/html/index.html.bak /var/www/sec-lab/html/index.html
+```
+
+## تست ۵: Fail2Ban
+از یک سیستم دیگر چند بار عمداً SSH اشتباه بزن:
+```bash
+ssh -p 2222 yunusadmin@SERVER_IP
+```
+
+بعد بررسی کن:
+```bash
+sudo fail2ban-client status sshd
+```
+
+## تست ۶: Backup Integrity
+```bash
+mkdir /tmp/restore-test
+sudo tar -xzf /backups/FILE_NAME.tar.gz -C /tmp/restore-test
+tree /tmp/restore-test
+```
+
+## تست ۷: Reboot Persistence
+```bash
+sudo reboot
+```
+
+بعد از بالا آمدن:
+```bash
+findmnt
+sudo systemctl status ssh
+sudo systemctl status nginx
+sudo systemctl status fail2ban
+sudo ufw status
+```
+
+---
+
+در پایان پروژه باید این وضعیت برقرار باشد:
+
+- ورود SSH فقط با کلید و روی پورت `2222`
+- Root login غیرفعال
+- Password login غیرفعال
+- UFW فقط `2222/80/443` را باز گذاشته
+- Fail2Ban فعال و Jail مربوط به SSH سالم
+- LVM برای Web و Backup تنظیم شده
+- Nginx بالا و Hardened شده
+- HTTPS فعال شده
+- Health check هر ۱۵ دقیقه اجرا می‌شود
+- Backup هر شب ساعت ۲ اجرا می‌شود
+- تست خرابی‌ها را انجام داده‌ای و رفع کرده‌ای
+- همه چیز را در GitHub مستند کرده‌ای
+
+---
+
+# نکات بحرانی که نباید خراب شوند
+
+- قبل از غیرفعال‌کردن Password SSH، اول Login با کلید را تست کن
+- قبل از بستن Session فعلی SSH، Session دوم روی پورت `2222` را تست کن
+- قبل از `ufw enable` حتماً `2222/tcp` را Allow کن
+- قبل از `pvcreate` و `mkfs` دقیقاً دیسک را با `lsblk` شناسایی کن
+- بعد از هر تغییر در SSH بزن:
+```bash
+sudo sshd -t
+```
+- بعد از هر تغییر در Nginx بزن:
+```bash
+sudo nginx -t
+```
+- قبل از دستکاری‌های مهم Snapshot یا Backup داشته باش
