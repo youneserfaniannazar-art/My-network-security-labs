@@ -1,0 +1,871 @@
+
+# فاز ۴ — Infrastructure Engineering
+
+## هدف کلی فاز
+
+در این فاز از مدیریت تکیِ سیستم‌ها خارج می‌شوی و یاد می‌گیری یک زیرساخت سازمانی را طراحی، پیاده‌سازی، ایمن‌سازی و عیب‌یابی کنی.
+
+سرفصل‌های اصلی:
+
+1. Virtualization و Virtual Networking
+2. Windows Server و Active Directory
+3. DNS و DHCP سازمانی
+4. Identity و Authentication
+5. Group Policy و Access Control
+6. Infrastructure Security
+7. طراحی و مستندسازی لاب نهایی
+
+---
+
+# مرحله ۱ — Virtualization و Virtual Networking
+
+## هدف مرحله
+
+در پایان این مرحله باید بتوانی:
+
+- تفاوت Hypervisorهای Type 1 و Type 2 را توضیح بدهی.
+- یک ESXi Host را نصب و مدیریت کنی.
+- شبکه مجازی ESXi را طراحی کنی.
+- بین `vSwitch`، `Port Group`، `vmnic` و `vmk` تفاوت بگذاری.
+- VLANهای مختلف را به VMها اختصاص بدهی.
+- شبکه فیزیکی و مجازی را به شکل صحیح به هم متصل کنی.
+- سیاست‌های امنیتی شبکه مجازی را تنظیم کنی.
+- مشکل قطع ارتباط VM، اشتباه VLAN و مشکل Uplink را عیب‌یابی کنی.
+- یک سناریوی چند VLAN برای DMZ، LAN داخلی و Management طراحی کنی.
+
+---
+
+# بخش ۱ — مفهوم Virtualization
+
+## Virtualization چیست؟
+
+مجازی‌سازی یعنی منابع سخت‌افزاری یک سیستم، مانند:
+
+- CPU
+- RAM
+- Disk
+- Network Interface
+
+بین چند سیستم‌عامل مستقل تقسیم شوند.
+
+به هر سیستم‌عامل مجازی، یک **Virtual Machine** یا `VM` گفته می‌شود.
+
+برای مثال روی یک سیستم فیزیکی می‌توانی هم‌زمان این VMها را اجرا کنی:
+
+```text
+VM 1: Windows Server
+VM 2: Ubuntu Server
+VM 3: Kali Linux
+VM 4: Windows 11 Client
+```
+
+هر VM سیستم‌عامل، دیسک، کارت شبکه و تنظیمات مستقل خودش را دارد؛ اما منابع واقعی را از Host دریافت می‌کند.
+
+---
+
+# بخش ۲ — اجزای اصلی معماری
+
+معماری کلی به این شکل است:
+
+```text
+Physical Hardware
+        |
+        v
+Hypervisor
+        |
+        +-- VM 1
+        +-- VM 2
+        +-- VM 3
+        +-- VM 4
+```
+
+## Host
+
+سیستم فیزیکی‌ای که Hypervisor روی آن نصب شده است.
+
+نمونه منابع Host:
+
+```text
+CPU: 8 Cores
+RAM: 32 GB
+Storage: 1 TB SSD
+NIC: 2 x 1Gbps
+```
+
+## Guest
+
+سیستم‌عاملی که داخل VM اجرا می‌شود.
+
+مثال:
+
+```text
+Ubuntu Server Guest
+Windows Server Guest
+Kali Linux Guest
+```
+
+## Hypervisor
+
+لایه‌ای که منابع فیزیکی را مدیریت و بین VMها تقسیم می‌کند.
+
+---
+
+# بخش ۳ — انواع Hypervisor
+
+## Type 1 — Bare-Metal Hypervisor
+
+مستقیماً روی سخت‌افزار نصب می‌شود:
+
+```text
+Hardware
+   |
+   v
+ESXi / Proxmox
+   |
+   v
+Virtual Machines
+```
+
+نمونه‌ها:
+
+- VMware ESXi
+- Microsoft Hyper-V Server
+- Proxmox VE
+- Xen
+
+مزایا:
+
+- کارایی بهتر
+- مدیریت متمرکز VMها
+- مناسب محیط‌های سازمانی
+- کنترل مستقیم‌تر روی منابع
+- قابلیت‌هایی مانند Migration، Snapshot و مدیریت Storage
+
+## Type 2 — Hosted Hypervisor
+
+روی یک سیستم‌عامل معمولی نصب می‌شود:
+
+```text
+Hardware
+   |
+   v
+Windows / Linux
+   |
+   v
+VMware Workstation / VirtualBox
+   |
+   v
+Virtual Machines
+```
+
+نمونه‌ها:
+
+- VMware Workstation
+- VirtualBox
+- Parallels Desktop
+
+برای لاب آموزشی، Type 2 بسیار کاربردی است؛ چون می‌توانی ESXi یا سایر سیستم‌عامل‌ها را به‌صورت Nested اجرا کنی.
+
+## Nested Virtualization
+
+یعنی یک Hypervisor را داخل یک VM اجرا کنی:
+
+```text
+Physical Laptop
+      |
+      v
+VMware Workstation
+      |
+      v
+ESXi VM
+      |
+      v
+Windows Server VM / Linux VM
+```
+
+برای محیط آموزشی مفید است، اما محدودیت دارد:
+
+- کارایی کمتر
+- مصرف RAM و CPU بیشتر
+- پیچیدگی شبکه
+- بعضی قابلیت‌های ESXi ممکن است کامل کار نکنند
+- اجرای چند لایه Hypervisor به سخت‌افزار قوی نیاز دارد
+
+---
+
+# بخش ۴ — ESXi Host
+
+`VMware ESXi` یک Hypervisor نوع Type 1 است.
+
+ESXi روی سرور فیزیکی نصب می‌شود و VMها را مدیریت می‌کند.
+
+اجزای مهم Host:
+
+```text
+ESXi Host
+├── CPU Resources
+├── Memory Resources
+├── Datastores
+├── Physical NICs
+├── Virtual Switches
+├── VMkernel Interfaces
+└── Virtual Machines
+```
+
+## Datastore
+
+فضای ذخیره‌سازی‌ای است که فایل‌های VM داخل آن نگهداری می‌شوند.
+
+فایل‌های یک VM معمولاً شامل موارد زیر هستند:
+
+- فایل دیسک مجازی، مانند `VMDK`
+- فایل تنظیمات VM، مانند `VMX`
+- Snapshot files
+- فایل‌های Log
+
+## Physical NIC یا `vmnic`
+
+کارت شبکه فیزیکی Host است.
+
+مثال:
+
+```text
+vmnic0
+vmnic1
+```
+
+این کارت‌ها می‌توانند به Virtual Switch متصل شوند و ارتباط ESXi یا VMها را با شبکه فیزیکی برقرار کنند.
+
+---
+
+# بخش ۵ — معماری شبکه مجازی ESXi
+
+ساختار اصلی شبکه ESXi:
+
+```text
+Physical Switch
+       |
+       | Ethernet Uplink
+       v
+Physical NIC: vmnic0
+       |
+       v
+Virtual Switch: vSwitch0
+       |
+       +-- Management Port Group
+       +-- VM Network Port Group
+       +-- VMkernel Port: vmk0
+```
+
+چهار جزء را باید کاملاً از هم جدا بدانی:
+
+1. `vSwitch`
+2. `Port Group`
+3. `vmnic`
+4. `vmk`
+
+---
+
+# بخش ۶ — vSwitch
+
+`vSwitch` یک سوئیچ نرم‌افزاری داخل ESXi است.
+
+وظایف آن:
+
+- اتصال VMها به یکدیگر
+- اتصال VMها به شبکه فیزیکی
+- انتقال فریم‌های Ethernet
+- اعمال برخی سیاست‌های امنیتی و ترافیکی
+- اتصال Port Groupها به Uplinkها
+
+## انواع vSwitch
+
+### Standard vSwitch یا `vSphere Standard Switch`
+
+تنظیمات آن روی هر Host به‌صورت جداگانه انجام می‌شود.
+
+```text
+ESXi Host 1 --> vSwitch configuration
+ESXi Host 2 --> separate vSwitch configuration
+```
+
+ویژگی‌ها:
+
+- ساده‌تر
+- مناسب لاب و محیط‌های کوچک
+- مدیریت مستقل روی هر Host
+- بدون نیاز به vCenter برای ساخت پایه
+
+### Distributed Switch یا `vDS`
+
+از طریق vCenter مدیریت می‌شود و تنظیمات می‌تواند بین چند ESXi Host یکسان بماند.
+
+ویژگی‌ها:
+
+- مناسب محیط‌های بزرگ
+- مدیریت متمرکز
+- امکانات پیشرفته‌تر
+- نیازمند vCenter و لایسنس مناسب در بسیاری از نسخه‌ها
+
+برای شروع لاب، `vSphere Standard Switch` انتخاب مناسب‌تری است.
+
+---
+
+# بخش ۷ — Port Group
+
+`Port Group` یک شبکه منطقی روی vSwitch است.
+
+VM مستقیماً به vSwitch متصل نمی‌شود؛ بلکه کارت شبکه VM به یک Port Group متصل می‌شود.
+
+مثال:
+
+```text
+vSwitch1
+├── PG-Web-DMZ
+├── PG-Internal-LAN
+└── PG-Management
+```
+
+هر Port Group می‌تواند این موارد را داشته باشد:
+
+- نام مشخص
+- VLAN ID
+- سیاست‌های امنیتی
+- Traffic Shaping
+- Teaming و Failover Policy
+
+مثال طراحی:
+
+| Port Group | کاربرد | VLAN ID |
+|---|---|---:|
+| `PG-Web-DMZ` | وب‌سرورها | 10 |
+| `PG-Internal-LAN` | کلاینت‌ها و سرورهای داخلی | 20 |
+| `PG-Management` | مدیریت زیرساخت | 30 |
+
+نکته مهم:  
+Port Group به‌تنهایی Firewall یا Router نیست. Port Group فقط شبکه منطقی و نحوه اتصال VM به vSwitch را مشخص می‌کند. جداسازی بین VLANها باید توسط VLAN و یک دستگاه Layer 3 مانند Router، Firewall یا L3 Switch انجام شود.
+
+---
+
+# بخش ۸ — vmnic و Uplink
+
+`vmnic` نام کارت شبکه فیزیکی ESXi است.
+
+مثال:
+
+```text
+vmnic0 --> اتصال به Physical Switch Port 1
+vmnic1 --> اتصال به Physical Switch Port 2
+```
+
+وقتی `vmnic0` را به یک vSwitch اضافه می‌کنی، آن را به‌عنوان `Uplink` استفاده می‌کنی.
+
+```text
+VM
+ |
+ v
+Port Group
+ |
+ v
+vSwitch
+ |
+ v
+vmnic0
+ |
+ v
+Physical Switch
+```
+
+اگر هیچ Uplinkای وجود نداشته باشد:
+
+- VMها ممکن است با یکدیگر روی همان vSwitch ارتباط داشته باشند.
+- اما VMها به شبکه فیزیکی و اینترنت دسترسی نخواهند داشت.
+- Management خود ESXi نیز ممکن است از شبکه خارج شود.
+
+---
+
+# بخش ۹ — VMkernel و `vmk`
+
+`VMkernel Port` رابط شبکه‌ای خود ESXi Host است، نه کارت شبکه معمولی VM.
+
+نام رابط‌ها معمولاً به شکل زیر است:
+
+```text
+vmk0
+vmk1
+vmk2
+```
+
+کاربردهای VMkernel:
+
+- Management
+- vMotion
+- iSCSI
+- NFS
+- Fault Tolerance
+- Provisioning
+
+در لاب فعلی، حداقل یک VMkernel برای Management نیاز داریم:
+
+```text
+vmk0
+IP: 192.168.30.10/24
+Gateway: 192.168.30.1
+VLAN: 30
+```
+
+تفاوت مهم:
+
+| مورد | کاربرد |
+|---|---|
+| `vmnic` | کارت شبکه فیزیکی Host |
+| `vmk` | رابط منطقی شبکه برای خود ESXi |
+| vNIC VM | کارت شبکه مجازی یک VM |
+| Port Group | شبکه منطقی اتصال VM یا VMkernel |
+
+---
+
+# بخش ۱۰ — طراحی VLAN در سناریوی لاب
+
+توپولوژی پیشنهادی:
+
+```text
+                         +----------------------+
+                         | Router / Firewall    |
+                         | Inter-VLAN Routing   |
+                         +----------+-----------+
+                                    |
+                              Trunk Link
+                                    |
+                         +----------+-----------+
+                         | Physical Switch     |
+                         +----------+-----------+
+                                    |
+                              ESXi Uplink
+                                    |
+                         +----------+-----------+
+                         | ESXi vSwitch        |
+                         +----------+-----------+
+                           |        |        |
+                         VLAN 10  VLAN 20  VLAN 30
+                         DMZ      LAN      Mgmt
+```
+
+## VLAN 10 — Web-DMZ
+
+برای سرویس‌هایی که باید از شبکه‌های دیگر جدا باشند.
+
+نمونه VMها:
+
+```text
+Web Server
+Reverse Proxy
+Public Service
+```
+
+نمونه آدرس‌دهی:
+
+```text
+Network: 192.168.10.0/24
+Gateway: 192.168.10.1
+Web VM: 192.168.10.10
+```
+
+## VLAN 20 — Internal-LAN
+
+برای شبکه داخلی و سرورهای داخلی.
+
+نمونه VMها:
+
+```text
+Domain Controller
+Internal DNS
+File Server
+Client VM
+```
+
+نمونه آدرس‌دهی:
+
+```text
+Network: 192.168.20.0/24
+Gateway: 192.168.20.1
+Windows Server: 192.168.20.10
+```
+
+## VLAN 30 — Management
+
+برای مدیریت ESXi، تجهیزات و سرورها.
+
+نمونه منابع:
+
+```text
+ESXi Management: 192.168.30.10
+Router Management: 192.168.30.1
+Switch Management: 192.168.30.2
+```
+
+اصل امنیتی مهم:
+
+> دسترسی Management نباید از همه VLANها آزاد باشد. فقط سیستم‌های مدیریتی مجاز باید بتوانند به VLAN 30 دسترسی داشته باشند.
+
+---
+
+# بخش ۱۱ — VLAN Tagging
+
+برای عبور چند VLAN از یک لینک، معمولاً از `802.1Q Tagging` استفاده می‌شود.
+
+ساختار فریم:
+
+```text
+Ethernet Header
+802.1Q VLAN Tag
+IP Header
+Payload
+```
+
+VLAN ID داخل Tag قرار می‌گیرد.
+
+مثال:
+
+```text
+VLAN 10 --> Web-DMZ
+VLAN 20 --> Internal-LAN
+VLAN 30 --> Management
+```
+
+## حالت Trunk
+
+لینک Trunk می‌تواند چند VLAN را هم‌زمان عبور دهد:
+
+```text
+Physical Switch ===== Trunk ===== ESXi Uplink
+             VLAN 10,20,30
+```
+
+## حالت Access
+
+لینک Access معمولاً فقط متعلق به یک VLAN است:
+
+```text
+Switch Port
+   |
+   +-- VLAN 20
+```
+
+برای سناریوی چند VLAN بین Physical Switch و ESXi، مسیر Uplink باید از نظر طراحی، Trunk باشد و VLANهای لازم روی آن مجاز باشند.
+
+---
+
+# بخش ۱۲ — دو روش رایج Tagging
+
+## روش اول: Virtual Switch Tagging
+
+در این روش VLAN ID روی Port Group تنظیم می‌شود:
+
+```text
+PG-Web-DMZ       VLAN 10
+PG-Internal-LAN  VLAN 20
+PG-Management    VLAN 30
+```
+
+این روش برای بیشتر سناریوهای عادی مناسب است.
+
+## روش دوم: Virtual Guest Tagging
+
+در این روش VM خودش VLAN Tag ایجاد می‌کند و معمولاً برای سناریوهای خاص مانند Router VM یا Firewall VM استفاده می‌شود.
+
+در این حالت VM باید بتواند فریم‌های Tag‌شده را دریافت و ارسال کند. بنابراین سیاست‌های امنیتی مناسب لازم است و نباید بی‌دلیل برای همه VMها فعال شود.
+
+---
+
+# بخش ۱۳ — سیاست‌های امنیتی Port Group
+
+در تنظیمات Security هر Port Group معمولاً سه گزینه مهم داریم:
+
+## ۱. Promiscuous Mode
+
+اگر فعال باشد، کارت شبکه VM می‌تواند فریم‌هایی را ببیند که مقصد MAC آن‌ها خود VM نیست.
+
+کاربرد:
+
+- IDS
+- بعضی ابزارهای Capture
+- مانیتورینگ تخصصی
+- سناریوهای خاص Network Appliance
+
+مقدار پیش‌فرض پیشنهادی:
+
+```text
+Reject
+```
+
+فقط برای Port Group مخصوص مانیتورینگ، در صورت نیاز واقعی:
+
+```text
+Accept
+```
+
+## ۲. MAC Address Changes
+
+مشخص می‌کند آیا VM می‌تواند MAC کارت شبکه خود را تغییر دهد یا نه.
+
+مقدار امن پیش‌فرض:
+
+```text
+Reject
+```
+
+برای بعضی تجهیزات مجازی مانند Firewallها یا Load Balancerها ممکن است نیاز به تغییر داشته باشد، اما باید فقط روی همان Port Group محدود اعمال شود.
+
+## ۳. Forged Transmits
+
+مشخص می‌کند آیا VM می‌تواند فریم‌هایی با Source MAC متفاوت از MAC ثبت‌شده خودش ارسال کند یا نه.
+
+مقدار امن پیش‌فرض:
+
+```text
+Reject
+```
+
+این تنظیم در کاهش خطر MAC Spoofing مفید است.
+
+## تنظیم پیشنهادی سناریو
+
+| Port Group | Promiscuous | MAC Changes | Forged Transmits |
+|---|---|---|---|
+| `PG-Web-DMZ` | Reject | Reject | Reject |
+| `PG-Internal-LAN` | Reject | Reject | Reject |
+| `PG-Management` | Reject | Reject | Reject |
+| `PG-Monitoring` | فقط در صورت نیاز Accept | طبق نیاز ابزار | طبق نیاز ابزار |
+
+نکته مهندسی:  
+فعال‌کردن هر سه گزینه برای کل vSwitch تصمیم نادرستی است. این تنظیمات باید در کمترین محدوده ممکن، ترجیحاً فقط روی Port Group مربوط به همان سرویس، اعمال شوند.
+
+---
+
+# بخش ۱۴ — سناریوی عملی مرحله اول
+
+## هدف لاب
+
+ساخت یک زیرساخت مجازی با این اجزا:
+
+```text
+ESXi Host
+├── vSwitch-Lab
+│   ├── PG-Web-DMZ - VLAN 10
+│   ├── PG-Internal-LAN - VLAN 20
+│   └── PG-Management - VLAN 30
+│
+├── ESXi Management
+│   └── vmk0 - VLAN 30
+│
+├── Web Server VM
+│   └── VLAN 10
+│
+├── Windows Server VM
+│   └── VLAN 20
+│
+└── Admin VM
+    └── VLAN 30
+```
+
+## آدرس‌دهی پیشنهادی
+
+| شبکه | Subnet | Gateway |
+|---|---|---|
+| Web-DMZ | `192.168.10.0/24` | `192.168.10.1` |
+| Internal-LAN | `192.168.20.0/24` | `192.168.20.1` |
+| Management | `192.168.30.0/24` | `192.168.30.1` |
+
+آدرس‌های نمونه:
+
+```text
+ESXi vmk0:       192.168.30.10/24
+Web Server:      192.168.10.10/24
+Windows Server:  192.168.20.10/24
+Admin VM:        192.168.30.20/24
+```
+
+---
+
+# بخش ۱۵ — پیش‌نیاز سخت‌افزاری Nested Lab
+
+برای اجرای ESXi داخل VMware Workstation یا محیط مشابه، این موارد اهمیت دارند:
+
+- فعال‌بودن Intel VT-x یا AMD-V در BIOS/UEFI
+- حداقل 16GB RAM؛ برای لاب راحت‌تر 32GB
+- حداقل 4 هسته پردازشی
+- فضای دیسک کافی
+- فعال‌بودن Nested Virtualization برای VM مربوط به ESXi
+- دسترسی مدیریتی به تنظیمات شبکه مجازی Host
+
+برای لاب سبک می‌توانی با این ساختار شروع کنی:
+
+```text
+ESXi VM:
+  vCPU: 2
+  RAM: 8GB
+  Disk: 80GB
+  NIC: 2 عدد
+
+Web Server VM:
+  vCPU: 1
+  RAM: 2GB
+
+Windows Server VM:
+  vCPU: 2
+  RAM: 4GB
+
+Admin VM:
+  vCPU: 2
+  RAM: 4GB
+```
+
+این مقادیر حداقل آموزشی هستند و بسته به سیستم واقعی ممکن است نیاز به کاهش یا افزایش داشته باشند.
+
+---
+
+# بخش ۱۶ — ترتیب اجرای لاب
+
+ترتیب صحیح پیاده‌سازی:
+
+1. بررسی قابلیت Nested Virtualization
+2. ساخت ESXi VM
+3. نصب ESXi
+4. تنظیم Management Network
+5. ساخت یا انتخاب Datastore
+6. ساخت `vSwitch-Lab`
+7. ساخت سه Port Group
+8. اختصاص VLAN IDها
+9. ایجاد VMkernel Management
+10. اتصال VMها به Port Group مناسب
+11. تنظیم Trunk در مسیر فیزیکی یا مجازی
+12. ساخت Gateway یا Router برای Inter-VLAN Routing
+13. تست ارتباط داخل هر VLAN
+14. تست ارتباط بین VLANها
+15. اعمال سیاست‌های امنیتی
+16. مستندسازی توپولوژی و تنظیمات
+
+---
+
+# بخش ۱۷ — تست‌های موردنیاز
+
+## تست لایه ۲
+
+بررسی کن VMهای یک VLAN بتوانند با هم ارتباط داشته باشند:
+
+```text
+Web VM  <---->  Web VM
+```
+
+## تست لایه ۳
+
+بررسی کن ارتباط بین VLANها فقط از طریق Gateway انجام شود:
+
+```text
+VLAN 10 --> Gateway --> VLAN 20
+```
+
+## تست Management
+
+از Admin VM بررسی کن:
+
+```text
+Admin VM --> ESXi Management IP
+```
+
+اما از Web-DMZ نباید دسترسی مدیریتی آزاد وجود داشته باشد:
+
+```text
+Web-DMZ -X-> ESXi Management
+```
+
+## تست VLAN اشتباه
+
+یک VM را عمداً به Port Group اشتباه متصل کن و نتیجه را بررسی کن. این کار به درک واقعی اثر VLAN Assignment کمک می‌کند.
+
+## تست قطع Uplink
+
+Uplink را موقتاً قطع کن و بررسی کن:
+
+- آیا VMهای همان vSwitch هنوز با هم ارتباط دارند؟
+- آیا به Gateway دسترسی دارند؟
+- آیا ESXi Management قطع می‌شود؟
+
+این تست تفاوت شبکه داخلی vSwitch و ارتباط External را مشخص می‌کند.
+
+---
+
+# بخش ۱۸ — خطاهای رایج
+
+## VLAN روی Switch تعریف نشده
+
+اگر Port Group روی VLAN 10 باشد اما VLAN 10 روی مسیر فیزیکی مجاز نباشد، ترافیک عبور نمی‌کند.
+
+## لینک فیزیکی Trunk نیست
+
+برای عبور چند VLAN، لینک بین Switch و ESXi باید بتواند VLANهای لازم را منتقل کند.
+
+## Gateway اشتباه
+
+هر VLAN باید Gateway مناسب خودش را داشته باشد:
+
+```text
+VLAN 10 --> 192.168.10.1
+VLAN 20 --> 192.168.20.1
+VLAN 30 --> 192.168.30.1
+```
+
+## اتصال VM به Port Group اشتباه
+
+گاهی مشکل از ESXi نیست؛ VM به Port Group اشتباه وصل شده است.
+
+## فعال‌کردن Promiscuous Mode روی کل vSwitch
+
+این کار سطح مشاهده ترافیک را بی‌دلیل افزایش می‌دهد و از نظر امنیتی مناسب نیست.
+
+## یکی‌گرفتن Management با شبکه کاربران
+
+شبکه Management باید جدا و کنترل‌شده باشد. دسترسی مدیریتی را روی VLAN کاربران یا DMZ قرار نده.
+
+---
+
+# تمرین مرحله اول
+
+در این مرحله ابتدا این طراحی را آماده کن:
+
+```text
+vSwitch-Lab
+├── PG-Web-DMZ       VLAN 10
+├── PG-Internal-LAN  VLAN 20
+└── PG-Management    VLAN 30
+```
+
+و جدول زیر را در مستندات لاب ثبت کن:
+
+| نام | نوع | VLAN | Subnet | کاربرد |
+|---|---|---:|---|---|
+| `PG-Web-DMZ` | VM Port Group | 10 | `192.168.10.0/24` | وب‌سرورها |
+| `PG-Internal-LAN` | VM Port Group | 20 | `192.168.20.0/24` | شبکه داخلی |
+| `PG-Management` | VMkernel/VM Port Group | 30 | `192.168.30.0/24` | مدیریت |
+
+همچنین برای هر Port Group این تنظیمات را ثبت کن:
+
+```text
+Promiscuous Mode: Reject
+MAC Address Changes: Reject
+Forged Transmits: Reject
+```
+
+در پایان این بخش باید بتوانی مسیر زیر را از روی دیاگرام توضیح بدهی:
+
+```text
+VM
+  -> vNIC
+  -> Port Group
+  -> vSwitch
+  -> vmnic
+  -> Physical Switch
+  -> Router/Firewall
+```
+
