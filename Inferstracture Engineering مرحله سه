@@ -1,0 +1,576 @@
+# فاز ۴ — Infrastructure Engineering  
+## مرحله ۳ — DNS و DHCP سازمانی
+
+یونس، این مرحله از فاز ۴ یکی از مهم‌ترین بخش‌های زیرساخت سازمانی است، چون **DNS** و **DHCP** فقط سرویس‌های کمکی نیستند؛ این دو سرویس مستقیماً روی **Active Directory، Authentication، Service Discovery، Availability و Troubleshooting** اثر می‌گذارند.
+
+---
+
+# 1) DNS سازمانی در اکتیو دایرکتوری
+
+## 1-1. DNS چرا برای AD حیاتی است؟
+اکتیو دایرکتوری بدون DNS عملاً فلج می‌شود، چون کلاینت‌ها برای پیدا کردن Domain Controller از **SRV Record** استفاده می‌کنند.  
+یعنی کلاینت فقط IP نمی‌خواهد؛ باید بتواند **سرویس مناسب را با نام پیدا کند**.
+
+### نقش DNS در AD
+- پیدا کردن Domain Controller
+- کشف سرویس‌های LDAP / Kerberos / GC
+- Resolve کردن نام کامپیوترها، سرورها و سرویس‌ها
+- پشتیبانی از Group Policy، Join Domain، Replication و Logon
+
+---
+
+## 1-2. زون‌های DNS در محیط سازمانی
+
+### Forward Lookup Zone
+نام را به IP تبدیل می‌کند.
+
+مثال:
+```text
+dc01.domain.local  ->  192.168.1.10
+filesrv.domain.local -> 192.168.1.20
+```
+
+### Reverse Lookup Zone
+IP را به نام تبدیل می‌کند.
+
+مثال:
+```text
+192.168.1.10 -> dc01.domain.local
+```
+
+Reverse Zone برای:
+- عیب‌یابی
+- لاگ‌ها
+- امنیت
+- تایید هویت سیستم‌ها در برخی سناریوها
+
+---
+
+## 1-3. ساختار AD-Integrated DNS
+در محیط Domain-based، بهتر است DNS به‌صورت **AD-Integrated** باشد.
+
+### مزیت‌ها
+- ذخیره Zone داخل Active Directory
+- Replication از طریق AD
+- Multi-Master
+- امنیت بالاتر
+- پایداری بیشتر
+
+### تفاوت با DNS معمولی
+در DNS معمولی:
+- یک Master
+- چندین Slave
+- تغییرات فقط روی Master
+
+در AD-Integrated:
+- هر DC می‌تواند میزبان Zone باشد
+- تغییرات بین DCها Replicate می‌شود
+- زون داخل دیتابیس AD نگهداری می‌شود
+
+---
+
+## 1-4. رکوردهای مهم DNS در AD
+
+### A Record
+نام میزبان → IPv4
+
+### AAAA Record
+نام میزبان → IPv6
+
+### PTR Record
+IP → نام میزبان
+
+### CNAME
+Alias برای یک نام دیگر
+
+### SRV Record
+مهم‌ترین رکورد در AD
+
+مثال:
+```text
+_ldap._tcp.dc._msdcs.domain.local
+_kerberos._tcp.domain.local
+```
+
+### نقش SRV
+کلاینت از این رکوردها می‌فهمد:
+- کدام DC در دسترس است
+- LDAP کجا اجرا می‌شود
+- Kerberos کجا اجرا می‌شود
+- Global Catalog کجاست
+
+---
+
+## 1-5. فرآیند Name Resolution
+
+### حالت عادی
+```text
+Client -> DNS Cache -> Hosts File -> Local DNS Zone -> Forwarder -> Root Hints
+```
+
+### ترتیب بررسی
+1. Cache
+2. Hosts file
+3. Zone محلی
+4. Forwarders
+5. Root Hints
+
+---
+
+## 1-6. Forwarder و Root Hints
+
+### Forwarder
+اگر DNS داخلی نتواند نامی را resolve کند، درخواست را به DNS بالادستی می‌فرستد.
+
+مثال:
+- ISP DNS
+- Cloudflare: `1.1.1.1`
+- Google: `8.8.8.8`
+
+### Root Hints
+اگر Forwarder تعریف نشده باشد، DNS از Root Serverها شروع به Query می‌کند.
+
+---
+
+## 1-7. Dynamic Update
+کلاینت‌ها و DHCP Server می‌توانند رکوردهای DNS را به‌صورت خودکار ثبت یا به‌روزرسانی کنند.
+
+### انواع
+- **Non-Secure Dynamic Update**
+- **Secure Dynamic Update**
+
+### پیشنهاد سازمانی
+در محیط AD، باید از:
+```text
+Secure Only
+```
+استفاده شود.
+
+### دلیل
+جلوگیری از:
+- DNS Poisoning
+- رکوردسازی غیرمجاز
+- تغییر نام دامنه توسط کلاینت‌های غیرمجاز
+
+---
+
+## 1-8. Aging و Scavenging
+در DNS سازمانی، رکوردهای قدیمی باید پاک شوند تا Zone تمیز بماند.
+
+### مفاهیم
+- **Aging:** زمان‌دار شدن رکوردها
+- **Scavenging:** پاک‌سازی رکوردهای قدیمی و بلااستفاده
+
+### اهمیت
+اگر رکوردهای قدیمی پاک نشوند:
+- DNS شلوغ می‌شود
+- Resolveها اشتباه می‌شوند
+- Troubleshooting سخت می‌شود
+
+---
+
+## 1-9. Conditional Forwarder
+برای ارسال درخواست مربوط به یک دامنه خاص به DNS مشخص.
+
+مثال:
+- همه درخواست‌های `branch.local` برود به DNS شعبه
+
+این برای:
+- Site-to-Site
+- Forest Trust
+- Multi-Branch Architecture
+خیلی مهم است.
+
+---
+
+## 1-10. Split-Brain DNS
+یک دامنه با دو پاسخ متفاوت:
+- برای داخل سازمان
+- برای خارج سازمان
+
+مثال:
+- داخل: `portal.company.com -> 10.10.10.10`
+- خارج: `portal.company.com -> Public IP`
+
+این معماری در سرویس‌های داخلی/خارجی کاربرد دارد.
+
+---
+
+# 2) DHCP سازمانی
+
+## 2-1. DHCP چه کاری انجام می‌دهد؟
+DHCP به کلاینت‌ها تنظیمات شبکه را به‌صورت خودکار می‌دهد:
+- IP Address
+- Subnet Mask
+- Default Gateway
+- DNS Server
+- Lease Time
+
+---
+
+## 2-2. فرآیند DORA
+
+```text
+D - Discover
+O - Offer
+R - Request
+A - Acknowledge
+```
+
+### مرحله 1: Discover
+کلاینت Broadcast می‌فرستد:
+```text
+من DHCP Server می‌خواهم
+```
+
+### مرحله 2: Offer
+سرور DHCP یک IP پیشنهادی می‌دهد.
+
+### مرحله 3: Request
+کلاینت یکی از پیشنهادها را انتخاب می‌کند.
+
+### مرحله 4: ACK
+سرور IP را تایید می‌کند و پارامترهای شبکه را می‌فرستد.
+
+---
+
+## 2-3. Scope چیست؟
+Scope محدوده‌ای از IPهاست که DHCP می‌تواند بین کلاینت‌ها توزیع کند.
+
+مثال:
+```text
+192.168.1.50 - 192.168.1.200
+```
+
+### داخل Scope ممکن است داشته باشیم:
+- Range
+- Exclusion
+- Reservation
+- Lease
+- Options
+
+---
+
+## 2-4. Exclusion
+آدرس‌هایی که DHCP نباید تخصیص دهد.
+
+مثال:
+```text
+192.168.1.100 - 192.168.1.110
+```
+
+این IPها معمولاً برای:
+- Serverها
+- Printerها
+- Network Devices
+- IPهای Static
+
+---
+
+## 2-5. Reservation
+یک IP مشخص به یک MAC Address مشخص اختصاص داده می‌شود.
+
+### کاربرد
+برای دستگاه‌هایی که باید همیشه یک IP ثابت داشته باشند، ولی نمی‌خواهیم دستی Static تنظیم کنیم.
+
+مثال:
+- Printer
+- Access Point
+- Camera
+- IoT Device
+- بعضی سرورها
+
+---
+
+## 2-6. DHCP Options
+مهم‌ترین پارامترهایی که DHCP می‌دهد:
+
+- **Option 003**: Default Gateway
+- **Option 006**: DNS Server
+- **Option 015**: DNS Domain Name
+- **Option 044**: WINS/NBNS
+- **Option 046**: NetBIOS Node Type
+
+در محیط AD، Option 006 و 015 خیلی مهم‌اند.
+
+---
+
+## 2-7. Lease Time
+مدت زمانی که یک IP به کلاینت اجاره داده می‌شود.
+
+### مفهوم
+اگر Lease کوتاه باشد:
+- ترافیک DHCP بیشتر می‌شود
+- کنترل بهتر روی آدرس‌ها داریم
+
+اگر Lease بلند باشد:
+- مدیریت ساده‌تر
+- برای شبکه‌های پایدار مناسب‌تر است
+
+### نمونه
+- شبکه اداری ثابت: 7 روز یا بیشتر
+- شبکه مهمان: کوتاه‌تر
+- محیط آزمایشگاهی: کوتاه‌تر
+
+---
+
+## 2-8. DHCP Relay Agent
+Broadcast DHCP از Router عبور نمی‌کند.  
+پس اگر DHCP Server در VLAN دیگری باشد، باید Relay فعال شود.
+
+### در Cisco:
+```bash
+ip helper-address 192.168.100.10
+```
+
+### در عمل چه می‌کند؟
+- Broadcast کلاینت را دریافت می‌کند
+- آن را به Unicast تبدیل می‌کند
+- برای DHCP Server می‌فرستد
+
+### کاربرد
+- VLANهای مختلف
+- Siteهای مختلف
+- شبکه‌های چندبخشی
+
+---
+
+## 2-9. DHCP Authorization در AD
+در محیط Domain، DHCP Server باید **Authorize** شود.
+
+### دلیل
+جلوگیری از:
+- Rogue DHCP
+- DHCP Server غیرمجاز
+- اختلال در IP Assignment
+
+### اگر Authorize نشده باشد
+کلاینت‌ها IP درست نمی‌گیرند، حتی اگر سرویس بالا باشد.
+
+---
+
+## 2-10. DHCP Failover
+برای High Availability استفاده می‌شود.
+
+### حالت‌ها
+#### 1) Load Balance
+دو سرور هم‌زمان پاسخ می‌دهند.
+
+#### 2) Hot Standby
+یک سرور Active و یکی Standby است.
+
+### اهمیت
+اگر سرور اصلی Down شود:
+- IP distribution قطع نمی‌شود
+- سرویس پایدار می‌ماند
+
+---
+
+# 3) تعامل DNS و DHCP
+
+این بخش خیلی مهم است، چون در سازمان‌ها این دو سرویس به‌شدت به هم وابسته‌اند.
+
+## سناریوی استاندارد
+1. کلاینت IP می‌گیرد از DHCP
+2. DHCP آدرس DNS می‌دهد
+3. کلاینت نام DC و سرویس‌ها را Resolve می‌کند
+4. رکوردهای DNS با Dynamic Update به‌روزرسانی می‌شوند
+
+---
+
+## 3-1. ثبت رکوردهای DNS توسط DHCP
+اگر کلاینت خودش نتواند رکورد DNS را ثبت کند، DHCP می‌تواند این کار را انجام دهد.
+
+### برای چه دستگاه‌هایی؟
+- چاپگرها
+- کلاینت‌های غیر ویندوزی
+- دستگاه‌هایی که Dynamic Update ندارند
+
+---
+
+## 3-2. امنیت این بخش
+باید این موارد رعایت شود:
+- Secure Dynamic Update
+- کنترل دسترسی روی رکوردها
+- استفاده از Permissions صحیح
+- جلوگیری از DNS record hijacking
+
+---
+
+# 4) سناریوی عیب‌یابی واقعی
+
+## سناریو
+کلاینت‌ها در یک VLAN خاص IP نمی‌گیرند و به APIPA می‌روند:
+```text
+169.254.x.x
+```
+
+### نتیجه
+یعنی کلاینت DHCP Offer دریافت نکرده است.
+
+---
+
+## فلوچارت Troubleshooting
+
+```text
+[Client APIPA]
+      |
+      v
+[Check VLAN / Port / Trunk]
+      |
+      v
+[Is DHCP Relay present?]
+      |
+      v
+[Check DHCP Scope active?]
+      |
+      v
+[Check IP pool exhausted?]
+      |
+      v
+[Check DHCP Authorization]
+      |
+      v
+[Check Firewall / UDP 67-68]
+```
+
+---
+
+## بررسی‌های اصلی
+
+### 1) Scope فعال است؟
+اگر Scope غیرفعال باشد، سرور پاسخ نمی‌دهد.
+
+### 2) IP pool پر نشده؟
+اگر IPها تمام شده باشند، Offer صادر نمی‌شود.
+
+### 3) Relay درست است؟
+اگر DHCP در VLAN دیگری است و `ip helper-address` یا Relay نداریم، Discover به سرور نمی‌رسد.
+
+### 4) DHCP Authorize شده؟
+در AD، DHCP بدون Authorization کار نمی‌کند.
+
+### 5) Firewall بسته نیست؟
+پورت‌های مهم:
+- UDP 67
+- UDP 68
+
+---
+
+# 5) سناریوی DNS Troubleshooting
+
+## سناریو
+کلاینت عضو Domain هست ولی:
+- وارد Domain نمی‌شود
+- GPO اعمال نمی‌شود
+- DC پیدا نمی‌شود
+
+### علائم
+- `nslookup` خطا می‌دهد
+- `ping domain.local` جواب نمی‌دهد
+- `nltest /dsgetdc:domain.local` شکست می‌خورد
+
+---
+
+## علت‌های رایج
+
+### 1) DNS Server اشتباه روی کلاینت
+کلاینت نباید DNS عمومی بگیرد.  
+باید DNS داخلی یا DC را داشته باشد.
+
+### 2) SRV Record ثبت نشده
+اگر DC رکوردهای SRV را نساخته باشد، کلاینت DC را پیدا نمی‌کند.
+
+### 3) Zone replication مشکل دارد
+اگر DNS روی DCها هماهنگ نباشد، بخشی از کلاینت‌ها دچار مشکل می‌شوند.
+
+### 4) Time mismatch
+در AD، اختلاف زمان زیاد باعث failure در authentication و lookup می‌شود.
+
+---
+
+# 6) دستورها و ابزارهای مهم
+
+## برای DNS
+```bash
+ipconfig /all
+nslookup domain.local
+nslookup -type=SRV _ldap._tcp.domain.local
+ipconfig /flushdns
+ipconfig /registerdns
+```
+
+## برای DHCP
+```bash
+ipconfig /release
+ipconfig /renew
+```
+
+## برای AD/DNS Verification
+```bash
+dcdiag /test:dns
+repadmin /replsummary
+nltest /dsgetdc:domain.local
+```
+
+---
+
+# 7) تفاوت نقش DNS و DHCP در زیرساخت
+
+## DNS
+- اسم را به IP وصل می‌کند
+- سرویس‌ها را پیدا می‌کند
+- برای AD حیاتی است
+
+## DHCP
+- IP و تنظیمات شبکه می‌دهد
+- آدرس‌دهی را خودکار می‌کند
+- مدیریت شبکه را ساده می‌کند
+
+---
+
+# 8) معماری درست سازمانی
+
+## الگوی استاندارد
+- DNS داخلی روی DCها
+- Zone به‌صورت AD-Integrated
+- Secure Dynamic Update
+- DHCP Authorized
+- DHCP Relay در VLANها
+- Scopeهای منظم
+- Reservation برای تجهیزات ثابت
+- Scavenging فعال
+- Reverse Lookup Zone تعریف‌شده
+
+---
+
+# 9) Definition of Done برای مرحله ۳
+
+اگر این موارد را کامل بلد باشی، مرحله ۳ را رد کردی:
+
+1. فهم دقیق نقش DNS در پیدا کردن Domain Controller
+2. شناخت کامل SRV Record و کاربرد آن
+3. تسلط بر DORA در DHCP
+4. دانستن تفاوت Scope، Exclusion و Reservation
+5. بلد بودن DHCP Relay / ip helper-address
+6. فهمیدن علت APIPA و راه عیب‌یابی آن
+7. درک امنیت Dynamic Update و Authorization
+8. شناخت DNS Forwarder، Root Hints و Conditional Forwarder
+
+---
+
+# 10) جمع‌بندی فنی
+DNS و DHCP در سازمان فقط سرویس‌های شبکه‌ای نیستند؛ این‌ها پایه‌ی:
+- Join Domain
+- Logon
+- Group Policy
+- Authentication
+- Service Discovery
+- Network Stability
+
+هستند.  
+اگر DNS درست نباشد، AD درست کار نمی‌کند.  
+اگر DHCP درست نباشد، کلاینت‌ها حتی به مرحله Authentication هم نمی‌رسند.
+
+---
+
