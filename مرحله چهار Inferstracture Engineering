@@ -1,0 +1,277 @@
+
+# مرحله ۴ فاز ۴ — Group Policy Object (GPO)
+
+## ۱) GPO چیه و چرا انقلابه؟
+
+به زبان ساده، **GPO میانبرِ بین مدیر و کلاینتهاست**. بهجای اینکه بری سر تک‌تک سیستمها و تنظیماتشون رو دستی تغییر بدی، یکبار سیاست رو تعریف میکنی و بهصورت خودکار روی هر سیستمی که عضو دامین باشه اعمال میشه.
+
+### چیزهایی که با GPO میشه کنترل کرد
+- تنظیمات امنیتی (Password Policy, Account Lockout, Firewall)
+- نصب نرمافزار بهصورت متمرکز
+- محدودیت دسترسی (درایوها، Control Panel، USB)
+- اسکریپتهای لاگین و Shutdown
+- تغییر ساعت سیستم، صفحه پسزمینه، Wallpaper
+- مدیریت تنظیمات سرویسها و رجیستری
+- سیاستهای مرورگر و اینترنت
+- محدودیت نصب برنامهها (AppLocker)
+
+---
+
+## ۲) اجزای فیزیکی GPO — کجا ذخیره میشه؟
+
+یک GPO واحد، از **دو بخش جدا** تشکیل میشه که هر دو داخل AD ذخیره میشن:
+
+### الف) GPC — Group Policy Container
+یک شیء در اکتیو دایرکتوری که لینک‌ها و اطلاعات عمومی GPO رو نگه می‌داره.
+- مسیر: `CN=Policies,CN=System,DC=domain,DC=local`
+- شامل GUID و وضعیت فعال بودن.
+
+### ب) GPT — Group Policy Template
+یک پوشه در **SYSVOL** که خود تنظیمات واقعی رو نگه می‌داره.
+- مسیر: `C:\Windows\SYSVOL\sysvol\domain.local\Policies\{GUID}`
+- شامل فایل `GPT.INI` و زیرپوشههای `Machine` و `User`.
+
+> **نکته کلیدی:** چون GPT توی SYSVOL هست، همه DCها باهاش همگام میشن (DFSR) و GPO بین دامینکنترلرها Replicate میشه.
+
+---
+
+## ۳) دو بخش اصلی هر GPO — Computer و User
+
+هر GPO از دو ناحیه مستقل تشکیل شده:
+
+| بخش | روی چه چیزی اعمال میشه | چه زمانی اعمال میشه |
+|------|------------------------|---------------------|
+| **Computer Configuration** | تنظیمات سیستم (هستهای) | هنگام Boot شدن سیستم |
+| **User Configuration** | تنظیمات کاربر | هنگام Logon کردن کاربر |
+
+### کاربرد Computer Configuration
+- Windows Firewall
+- Startup و Shutdown scripts
+- Security Options
+- تنظیمات سرویسها
+- BitLocker
+
+### کاربرد User Configuration
+- Desktop Background
+- Folder Redirection
+- Logon/Logoff scripts
+- برنامهها برای کاربر
+
+> **نکته مهم:** اگر Computer تنظیم کنی، روی همه کاربران اون سیستم اعمال میشه. اگر User تنظیم کنی، فقط روی همون کاربر اعمال میشه. این دو مستقل از هم هستن.
+
+---
+
+## ۴) معماری LSDOU — ترتیب اعمال سیاستها
+
+GPO ها به یک ترتیب خاص اعمال میشن. این ترتیب **هرگز** نباید فراموش بشه:
+
+```
+L = Local Policy
+S = Site
+D = Domain
+O = Organizational Unit
+U = Organizational Unit (فرزند)
+```
+
+### ترتیب واقعی اعمال
+```text
+Local GPO
+  ↓
+Site
+  ↓
+Domain
+  ↓
+Parent OU
+  ↓
+Child OU (عمیقترین)
+```
+
+### قانون طلایی
+**هر کدوم تأخیرتر اعمال بشه، برنده است.**
+
+پس:
+
+```text
+Local (اول، ضعیفترین نیست!)  ← مهم، بعد Site اعمال میشه
+Child OU = آخرین = قویترین
+```
+
+در انتها **خروجی نهایی** از ترکیب همه اینها حاصل میشه که بهش میگن **RSoP (Resultant Set of Policy)**.
+
+---
+
+## ۵) وراثت (Inheritance) و مسدودسازی (Block Inheritance)
+
+### وراثت
+سیاستهای OU پدر به OU فرزند هم بهارث میرسن، مگر اینکه مسدود بشن.
+
+### Block Inheritance
+میتونی روی یک OU بذاری که سیاستهای OUهای بالادست (بهجز Domain که واجبه) بهش اعمال نشن.
+
+### Enforcement (No Override)
+اگر روی یک GPO این گزینه رو فعال کنی، حتی اگه Block بود یا GPO بالادست همرشته بود، باز هم **اجباراً اعمال میشه** و هیچکس نمیتونه جلوشو بگیره.
+
+### تقدم در تعارض
+```text
+Enforced > Normal
+Block vs Domain = یک محدودیت داره (نمیشه Domain رو بلاک کرد)
+```
+
+---
+
+## ۶) Security Filtering — اعمال انتخابی
+
+بهطور پیشفرض، یک GPO روی **Authenticated Users** اعمال میشه (یعنی همه کاربران و کامپیوترهای معتبر دامین).
+
+### برای محدود کردن
+در تب Delegation/Security میکنی:
+- **Authenticated Users** رو **Remove** میکنی
+- بهجاش گروه خاصی مثل `IT Staff` یا `Sales-GPO` رو اضافه میکنی
+- به اون گروه مجوز `Apply Group Policy + Read` میدی
+
+### فیلترها
+- **Security Filtering:** بر اساس گروههای کاربر/کامپیوتر
+- **WMI Filtering:** بر اساس شرایط سیستم (مثلاً فقط Windows 10 یا فقط اگه RAM > 8GB)
+
+---
+
+## ۷) GPO Preferences و Item-Level Targeting
+
+### کاربرد Preferences
+تنظیمات انتخابی که قابل تعامله و اگر کلاینت مخالفت کنه، تطبیق میافته (برخلاف Settings که اجباریه).
+
+### Item-Level Targeting
+میتونی یک Preference رو فقط برای:
+- گروه خاصی
+- نوع سیستم
+- فرآیند یا زبان خاص
+- محدوده IP خاص
+
+فعال کنی. این خیلی قدرتمنده.
+
+---
+
+## ۸) Loopback Processing
+
+سناریوی مهم: وقتی سروری با کاربران رومینگ یا Users روی ترمینال سرویس استفاده میشه، باید تنظیمات Computer رو هم روی User اعمال کرد.
+
+### حالت Normal
+تنظیمات User فقط از GPOهای User خودش میاد.
+
+### حالت Merge
+هم GPO کاربر و هم GPO کامپیوتر اعمال میشه.
+
+### حالت Replace
+فقط GPOهای کامپیوتر اعمال میشن؛ سیاستهای User نادیده گرفته میشن.
+
+کاربرد: **Citrix / RDS Environment** ها.
+
+---
+
+## ۹) ابزارهای مدیریتی GPO
+
+### GPMC (Group Policy Management Console)
+ابزار اصلی:
+- ایجاد و ویرایش GPO
+- لینک کردن به OUها
+- مدیریت Block/Enforce
+- Viev Resultant Set
+- بکاپ و Restore
+
+### gpedit.msc (Local فقط)
+فقط سیاست محلی سیستم؛ برای مدیریت مرکزی استفاده نمیشه.
+
+---
+
+## ۱۰) هماهنگسازی با AD (Replication & Time)
+
+زیرساخت GPO به شدت به **ساعت دامین** و **Replication** وابسته هست:
+- زمان DCها باید با هم هماهنگ باشه، چون GPO version number بر اساس زمان تشخیص داده میشه.
+- اگر DC جدیدی GPO های قدیمی بگیره، کلاینتها سیاستهای ناقص میگیرن.
+
+---
+
+## ۱۱) عیبیابی و ابزارهای عملی
+
+### دستورات کلیدی از خط فرمان:
+```bash
+gpupdate /force          # بازنویسی اجباری سیاستها
+gpresult /r              # خلاصه سیاستهای اعمالشده
+gpresult /r /scope:user  # سیاستهای بخش User
+gpresult /r /scope:computer
+gpresult /h c:\report.html  # خروجی HTML درازمدت
+rsop.msc                 # رابط گرافیکی RSoP
+```
+
+### بررسی محل اعمال سیاست
+```bash
+gpresult /r /user:younes
+```
+
+### لاگهای مربوط:
+```text
+Event Viewer > System > source: GroupPolicy
+```
+
+### علائم مشکل GPO:
+- تنظیمات اعمال نمیشود → بررسی اینکه GPO لینک شده یا نه
+- روی همه اعمال میشه → Security Filtering اشتباهه
+- GPO گرفته ولی نادیده گرفته میشه → Block/Enforce تداخل داره
+- Read هم نداره → Permission مشکل داره
+
+---
+
+## ۱۲) سناریوی عملی (کاربرد واقعی)
+
+### هدف
+محدود کردن نصب نرمافزار فقط برای مدیران و غیرفعال کردن USB برای کاربران عادی.
+
+### اجرا:
+1. ساخت ۲ OU: `ITLab` و `Users`
+2. ساخت GPO به اسم `USB-Block` ، اعمال روی `Computer Configuration`
+3. Security Filtering روی گروه `All-Computers-Exclude-Servers`
+4. گزینه Block Inheritance روی OU کاربران
+5. لینک به OU موردنظر
+6. تست با `gpresult /r`
+
+### نتیجه
+سیستمهای عادی نمیتونن USB متصل کنن، ولی سرورها و کامپیوترهای IT بها کار میرن.
+
+---
+
+## ۱۳) امنیت GPO
+
+- **Group Policy itself needs hardening:**
+  - فقط مدیران Domain بتوانن GPO بسازن یا لینک کنن
+  - برای گروههای حساس فقط `Read` بذار
+  - GPO را با `gpmc` بکاپ بگیر
+  - جلوگیری از تغییر SYSVOL توسط torqueها
+- **از Delegate** کردن به گروههای خاص استفاده کن
+- **فعال کردن واگذاری دقیق:** در واحد OU مشخص فقط Operatorها حق ساخت سیاست دارن
+
+---
+
+## ۱۴) نکات حرفهای (بهسبک Admin واقعی)
+
+1. اسم GPO باید معنادار باشه: `SSL-Clients-Harden` بهجای `GPO1`.
+2. از GPO با Scope کوچک (فقط مخصوص یک گروه) استفاده کن.
+3. GPO های لینکشده به Site رو کمتر استفاده کن؛ Apply delay دارن.
+4. در شبکه واقعی، مرتب `gpresult /h` بگیر و خروجی رو چک کن.
+5. **قبل از تغییر GPO، بکاپ از GPMC بگیر.**
+6. اگر GPO خالی یا غیرضروریست، حذف کن تا SYSVOL سبک بمونه.
+7. ساعت دامین رو با W32Time هماهنگ نگه دار؛ اگه DC ناهماهنگ باشه، GPO تشخیص درستی نمیده.
+
+---
+
+## ۱۵) Definition of Done — این مرحله کی تمومه؟
+
+وقتی بتونی این کارها رو بدون نگاه کردن به اون **Stage 4** رو رد کنی:
+1. ساخت و لینک GPO در GPMC
+2. شناخت کامل بخشهای Computer/User
+3. درک ترتیب LSDOU
+4. کار با Block، Enforce و Loopback
+5. فیلترکردن با Security و WMI
+6. تشخیص اتصالات و استفاده از gpresult
+7. انجام سناریوی واقعی: محدودسازی نصب، USB، پسزمینه، اسکریپت لاگین
+
+---
