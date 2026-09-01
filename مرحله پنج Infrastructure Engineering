@@ -1,0 +1,282 @@
+
+# مرحله ۵ فاز ۴ — Identity & Authentication Flows
+
+## ۲) هویت (Identity) در AD چیه؟
+
+در اکتیو دایرکتوری، **هر چیزی که بتونه به سرویسی دسترسی داشته باشه** یه **Security Principal** هست:
+
+| نوع | مثال |
+|------|------|
+| User | `younes.admin` |
+| Computer | `DC01$` |
+| Group | `Domain Admins`, `IT-Security` |
+| Service Account | `svc-sql` |
+
+### مفاهیم کلیدی هویت
+- **SID (Security Identifier):** شناسه عددی یکتا که هرگز تغییر نمی‌کنه و مبنای مجوزهاست.
+- **Token:** وقتی لاگین می‌کنی، یک توکن شامل SID تو + SID همه گروه‌هایی که عضوشی ساخته می‌شه.
+- **Access Token** مشخص می‌کنه تو به چه چیزی دسترسی داری.
+
+> **نکته طلایی:** مجوز (Authorization) بر اساس **SID** هست نه نام کاربری. اسم فقط برای کاربر انسانیه.
+
+---
+
+## ۳) دو مفهوم جدا: Authentication در برابر Authorization
+
+این دو رو نباید قاطی کنی — خیلی از مشکلات هم همین‌جاست:
+
+| | Authentication (احراز هویت) | Authorization (مجوزدهی) |
+|---|---|---|
+| سوال | **کی هستی؟** | **چه کاری می‌تونی بکنی؟** |
+| در AD | Kerberos / NTLM | ACL / Permissions |
+| مثال | وارد کردن رمز درست | دسترسی به پوشه `\\DC01\share` |
+
+ترتیبه: اول Authentication، بعد Authorization.
+
+---
+
+## ۴) پروتکل Kerberos — ستاره این مرحله
+
+در اکتیو دایرکتوری مدرن، پروتکل پیش‌فرض احراز هویت **Kerberos** است (نسخه 5).
+
+### اجزای Kerberos
+
+| جزء | نقش |
+|------|------|
+| **Client** | کاربر/سیستمی که می‌خواد دسترسی بگیره |
+| **KDC** (Key Distribution Center) | روی Domain Controller اجرا می‌شه؛ قلب Kerberos |
+| **AS** (Authentication Service) | بخشی از KDC که تیکت اولیه (TGT) صادر می‌کنه |
+| **TGS** (Ticket Granting Service) | بخشی که تیکت دسترسی به سرویس (TGS) صادر می‌کنه |
+| **Service** | سرویس‌هایی مثل فایل سرور، ایمیل و... |
+
+### شماتیک کامل (روی خودت لاگین میکنی)
+```text
+1. Client → AS (KDC):  "من فلانم، رمزم اینه"
+2. AS → Client:        TGT (Ticket Granting Ticket) + Session Key
+                         (رمز کاربرها فقط همینجا چک میشه)
+3. Client → TGS (KDC): "میخوام به \\DC01\share دسترسی بگیرم" + TGT
+4. TGS → Client:       TGS Ticket (برای سرویس) + Service Key
+5. Client → Service:   TGS Ticket
+6. Service:            تأیید میکنه و دسترسی میده
+```
+
+### مهم‌ترین نکات Kerberos
+- **رمز فقط یک‌بار** چک می‌شه (در مرحله به‌دست آوردن TGT). بعدش دیگه رمز فرستاده نمی‌شه — فقط از **Ticketها** استفاده می‌شه.
+- **Ticketها زمان‌دارن**: TGT معمولاً ۱۰ ساعت، TGS ۸ ساعت.
+- **هیچ چیزی به‌صورت Plain Text ارسال نمی‌شه** — همه چیز با کلیدهای مشتق‌شده از رمز، Symmetric Encrypt میشه.
+- پورت پیش‌فرض: **UDP/TCP 88**.
+
+### Renewable و Expiry
+- همه تیکت‌ها یه **Expiry Time** دارن.
+- کلاینت باید قبل از انقضا، تیکت رو **Renew** کنه.
+- به همین دلیل **ساعت دقیق** حیاتیه: مجاز بودن اختلاف ساعت فقط **۵ دقیقه** است.
+
+---
+
+## ۵) چرا ساعت و Kerberos این‌قدر به هم وابسته‌ان؟
+
+Kerberos برای جلوگیری از Replay Attack از **Timestamp** استفاده می‌کنه.
+
+- اگر ساعت کلاینت و DC بیشتر از **۵ دقیقه** اختلاف داشته باشه → **Kerberos Authentication Fails**
+- خطای معروف: **`KDC_ERR_PREAUTH_FAILED`** یا `0x18`
+
+### راه‌حل
+- همه سیستم‌ها باید زمانشون رو از **همون Domain Controller** (که از PDC Emulator هم‌سنج می‌شه) بگیرن.
+- سرویس **W32Time** این هماهنگی رو مدیریت می‌کنه.
+
+---
+
+## ۶) پروتکل NTLM — نسخه قدیمیتر
+
+وقتی Kerberos کار نکنه (مثلاً ساعت نامناسب یا روبه‌روی سیستم خارج از دامین)، ویندوز به **NTLM** برمی‌گرده.
+
+### چالش چالش-پاسخ (Challenge-Response)
+```text
+1. Client → Server:  Request + Username
+2. Server → Client:  Challenge (یک عدد تصادفی)
+3. Client → Server:  Response = Hash(password) XOR Challenge
+4. Server:           با DC چک میکنه
+```
+
+### مشکلات امنیتی NTLM
+- از **Hash رمز** استفاده می‌کنه (نه خود رمز — ولی باز هم ضعیف‌تر از Kerberos)
+- مستعد **Pass-the-Hash** و **Relay** حمله
+- هیچ ارجاع به سرویس و Target Name قوی نداره
+- به همین دلیل در سازمان‌های امنیتی **غیرفعال یا محدود** می‌شه.
+
+### مقایسه سریع
+
+| ویژگی | Kerberos | NTLM |
+|--------|----------|------|
+| رمز در شبکه | ارسال نمی‌شه (Ticket) | Hash ردوبدل می‌شه |
+| امنیت | بالا | متوسط/ضعیف |
+| نیاز به Clock Sync | بله (۵ دقیقه) | خیر |
+| پورت | 88 | 445 / 139 |
+
+---
+
+## ۷) LDAP — زبان جستوجوی هویت
+
+**LDAP** پروتکلی برای **خواندن و جستوجوی** اطلاعات در دایرکتوری (مثل AD) است.
+
+### چرا مهمه؟
+اکثر برنامه‌ها و ابزارها (VPN، ایمیل، وباپلیکیشن‌ها) برای پیدا کردن کاربر یا تایید هویت، با **LDAP** به اکتیو دایرکتوری وصل می‌شن.
+
+### ساختار درختی (Distinguished Name - DN)
+```text
+CN=Younes Admin, OU=IT, DC=company, DC=local
+ |               |       |
+ |               |       └─ Domain Components
+ |               └─ Organizational Unit
+ └─ Common Name (نام کاربر/شیء)
+```
+
+### تفاوت LDAP و LDAPS
+- **LDAP:** پورت **389**، بدون رمزنگاری
+- **LDAPS:** پورت **636**، رمزنگاری شده (SSL/TLS)
+- **LDAP+StartTLS:** روی 389 ولی ارتقا به TLS
+
+> **نکته امنیتی:** در سازمان‌های مدرن فقط **LDAPS** (636) باید استفاده بشه؛ استفاده از LDAP ساده روی 389 یعنی رمزها/مکالمات ممکنه رهگیری بشن.
+
+### مرجع (Base DN) و فیلتر
+برای جستوجو:
+- **Base DN:** نقطه شروع جستوجو (مثلاً `DC=company,DC=local`)
+- **Filter:** معیار جستوجو (مثل `(&(objectClass=user)(sAMAccountName=younes))`)
+
+### ابزارهای عملی
+```bash
+# روی ویندوز (RSAT / ADSI Edit)
+dsquery user -name "younes*"
+dsget user "CN=younes,OU=IT,DC=company,DC=local"
+
+# ابزارهای لینوکسی
+ldapsearch -x -H ldap://DC01 -b "DC=company,DC=local" "(sAMAccountName=younes)"
+```
+
+---
+
+## ۸) Authentication Flows — سناریوهای واقعی ورود
+
+### سناریو A: کاربر روی کامپیوتر عضو دامین لاگین میکنه
+```text
+1. کاربر Ctrl+Alt+Del و رمز میزنه
+2. کلاینت، DC را با SRV record پیدا میکنه
+3. Kerberos: درخواست TGT از KDC
+4. DC رمز را با هش در NTDS.dit مقایسه میکنه
+5. TGT به کاربر داده میشه
+6. برای هر سرویس بعدی (فایل، ایمیل) TGS گرفته میشه
+7. Access Token ساخته میشه و Authorization بر اساس SID انجام میشه
+```
+
+### سناریو B: کاربر با VPN / برنامه خارجی
+```text
+1. برنامه یک Bind به LDAP انجام میده (389/636)
+2. یا بهصورت LDAP Bind با DN کاربر + رمز
+3. AD هویت را تایید میکنه
+4. بعدش برنامه دسترسی‌ها را با گروه‌ها میچینه
+```
+
+### سناریو C: اعتبارنامه (Credentials) کجا ذخیره میشه؟
+- Hash رمزها در **NTDS.dit** روی DC ذخیره میشه (نه خود رمز — هش).
+- در حافظه کلاینت، به‌صورت Token/مشتق.
+
+---
+
+## ۹) Protocol Transition و Delegation (برای ادمین پیشرفته)
+
+### Kerberos Constrained Delegation
+به نمونه‌ی یک **Service Account** اجازه میده تا از طرف کاربر به یک سرویس **خاص** دسترسی بگیره. (SCENARIO: وباپلیکیشن که برای تایید، به SQL دسترسی داره)
+
+### Resource-Based Constrained Delegation
+مدل جدیدتر که ادمین سرویس مقصد، تعیین میکنه چه کسایی میتونن از طرفش ورود کنن.
+
+### S4U (Service for User)
+اجازه میده یک سرویس به نمایندگی از کاربر، تیکت برای سرویس دیگه بگیره — بدون اینکه رمز کاربر رو داشته باشه.
+
+> کاربرد واقعی: **Single Sign-On (SSO)** در وباپلیکیشن‌ها بدون ذخیره رمز.
+
+---
+
+## ۱۰) عیبیابی Authentication
+
+### رویدادهای مهم Event Log
+- **Event 4624:** ورود موفق
+- **Event 4625:** ورود ناموفق
+- **Event 4768:** TGT صادر شد (Kerberos)
+- **Event 4771:** Kerberos Pre-auth failed (رمز اشتباه / ساعت)
+
+### خطاهای رایج Kerberos
+| خطا | معنی |
+|-----|------|
+| `KDC_ERR_PREAUTH_FAILED` | رمز اشتباهه یا ساعت ناهماهنگه |
+| `KDC_ERR_BADOPTION` | مشکل در حالت تیکت / اگه Encryption اشتباه |
+| `KDC_ERR_S_PRINCIPAL_UNKNOWN` | سرویس توی AD ثبت نشده (SPN مشکل داره) |
+
+### ابزارها
+```bash
+klist                      # نمایش تیکتهای Kerberos کلاینت
+klist purge                # پاک کردن همه تیکتها (لاگین دوباره)
+ksetup                     # مدیریت Kerberos realm
+nltest /dsgetdc:company.local  # تست پیدا کردن DC
+```
+
+### بررسی SPN (Service Principal Name)
+```bash
+setspn -l svc-sql                    # لیست SPN های یک سرویس
+setspn -Q HTTP/websrv.company.local  # جستوجوی SPN
+```
+
+---
+
+## ۱۱) امنیت هویت — نکات حیاتی (پل به مرحله ۶)
+
+1. **غیرفعال کردن NTLM** یا حداقل محدودکردنش — پسورد Hash رهگیری نشه.
+2. **فقط LDAPS (636)** استفاده کن؛ LDAP ساده ممنوع.
+3. **ساعت دقیق** روی همه سیستمها (هماهنگ با DC).
+4. **Service Accounts** رو با `Group Managed Service Accounts (gMSA)` مدیریت کن — رمزها خودکار چرخش پیدا میکنن.
+5. **Credential Guard و LSA Protection** فعال کن تا Hash از حافظه دزدیده نشه.
+6. **گزارش** از Event 4624/4625 بگیر و آنومالیهای لاگین رو زیر نظر بگیر.
+
+---
+
+## ۱۲) سناریوی عملی (کاربرد واقعی)
+
+### مشکل
+کاربر `younes.admin` وقتی می‌خواد به `\\DC01\share` وصل بشه، پیام **Access Denied** میگیره، ولی در غیر اینصورت لاگین میکنه.
+
+### بررسی
+```text
+1. تست زمان: w32tm /query /status  →  ساعت درسته؟
+2. klist  →  آیا TGS برای سرویس داره؟
+   - اگر خیر: رمز کاربر / DC مشکل داره
+3. setspn -q CIFS/DC01.company.local  →  SPN سرویس ثبت شده؟
+4. بررسی Group Membership →  کاربر توی گروه دسترسی به share هست؟
+5. Event 4768 / 4624 در Security log
+```
+
+### نتیجه احتمالی
+یا **SPN سرویس ثبت نشده** (Kerberos fail میشه و به NTLM برمیگرده) یا **مجوز (ACL) روی اشتراک** مشکل داره — که یعنی **Authorization**، نه Authentication.
+
+---
+
+وقتی بتونی این کارها رو بدون نگاه کردن انجام بدی، مرحله ۵ رو رد کردی:
+1. توضیح کامل فرآیند Kerberos (مراحل AS → TGT → TGS → Service)
+2. دانستن تفاوت Authentication و Authorization
+3. درک SID و Token و نقششون در مجوزدهی
+4. شناخت کامل LDAP/LDAPS و ساختار DN
+5. عیبیابی خطاهای Kerberos با klist و Event Log
+6. درک خطرات NTLM و نحوه محدودکردنش
+7. انجام سناریوی واقعی Access Denied (تشخیص تیکت، SPN، مجوز)
+
+---
+
+## ۱۴) خلاصه فنی
+
+در این مرحله یاد گرفتی که قلب Active Directory از این اجزاست:
+
+```text
+Identity (SID/Token)  +  Authentication (Kerberos/NTLM)  +  Directory Access (LDAP)
+                                │
+                        Authorization (ACL/Permissions)
+                                │
+                         دسترسی امن به سرویسها
